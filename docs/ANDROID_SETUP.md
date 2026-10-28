@@ -1,0 +1,70 @@
+# Android setup
+
+## Identity (independent from Linqora QR)
+
+| | Linqora Books | Linqora QR (do not touch) |
+|---|---|---|
+| applicationId / namespace | `com.linqora.books` | `com.linqora.app` |
+| App name | Linqora Books | Linqora |
+| Version | versionCode 1, versionName 0.1.0 | separate |
+| Signing key | **to be created** for Books (Phase 7) | `~/.linqora-signing/linqora-release.jks` — never reuse |
+
+Changing `applicationId` after users install the app forces a reinstall, so treat `com.linqora.books` as
+final unless changed before the first client install.
+
+## Toolchain (verified on this machine, 28 Oct 2026)
+
+- Node 24.13.0, pnpm 12.15.0
+- Capacitor 8.5.3 (`@capacitor/core`, `cli`, `android`)
+- Android SDK at `C:\Users\rashi\AppData\Local\Android\Sdk`: platform `android-36`, build-tools 35/36/37
+- Gradle wrapper 8.14.3, Android Gradle Plugin 8.13.0, compile/target SDK 36, min SDK 24
+- **JDK 21**: `C:\Users\rashi\.jdks\jbr-21.0.11`. Android Studio's bundled JBR is Java 25, which this Gradle
+  version cannot run build scripts with ("Unsupported class file major version 69"). Always set `JAVA_HOME` to JDK 21.
+- `java` is not on PATH and `JAVA_HOME`/`ANDROID_HOME` are not set globally — set them per shell as below.
+
+## Build a debug APK
+
+PowerShell:
+
+```powershell
+$env:JAVA_HOME = "$HOME\.jdks\jbr-21.0.11"; $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+```
+
+```powershell
+pnpm android:debug
+```
+
+That runs `vite build` → `cap sync android` → `gradlew assembleDebug`. Output:
+
+`apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+
+Install on a phone with USB debugging enabled:
+
+```powershell
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r apps\mobile\android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+A debug APK is signed with the local debug key. It can be side-loaded for testing but cannot be updated
+by a release build (different signature) — uninstall first when switching.
+
+## After changing web code
+
+```bash
+pnpm android:sync
+```
+
+Then rebuild in Android Studio (open `apps/mobile/android`) or run `gradlew.bat assembleDebug` again.
+
+## Release builds (Phase 7 — not done)
+
+1. Generate a **new** keystore for Linqora Books, store it outside the repo (e.g. `~/.linqora-books-signing/`), back it up.
+2. Add a `signingConfigs.release` reading a properties file outside the repo (`*.jks` and `keystore.properties` are git-ignored).
+3. Enable minify/shrink, verify `debuggable false`, bump `versionCode` on every release.
+4. Add app icon and splash assets (currently Capacitor defaults).
+
+## Known Android limitations in Phase 1
+
+- "Print / PDF" uses `window.print()`, which does nothing in Android WebView. PDF generation and sharing arrive in Phase 4.
+- CSV/JSON exports use a browser download, which Android WebView does not handle; Phase 4 adds Filesystem/Share.
+- Data lives in the WebView's storage; clearing app data deletes it.
+- Default Capacitor launcher icon and splash.

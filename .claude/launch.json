@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "linqora-books-mobile",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "E:/Projects/LinqoraBooks/apps/mobile", "dev"],
+      "port": 5180
+    }
+  ]
+}

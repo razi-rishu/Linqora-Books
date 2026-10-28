@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Linqora Books</string>
+    <string name="title_activity_main">Linqora Books</string>
+    <string name="package_name">com.linqora.books</string>
+    <string name="custom_url_scheme">com.linqora.books</string>
+</resources>

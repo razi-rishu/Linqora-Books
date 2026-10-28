@@ -1,0 +1,27 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+
+# Playwright
+test-results/
+playwright-report/
+
+# Android build outputs (the android/ project itself is committed)
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/android/local.properties
+apps/mobile/android/app/release/
+*.jks
+*.keystore
+keystore.properties
+
+# Cloudflare
+.wrangler/
+.dev.vars
