@@ -6,7 +6,7 @@
 |---|---|---|
 | applicationId / namespace | `com.linqora.books` | `com.linqora.app` |
 | App name | Linqora Books | Linqora |
-| Version | versionCode 2, versionName 0.1.1 | separate |
+| Version | versionCode 3, versionName 0.1.2 | separate |
 | Signing key | **to be created** for Books (Phase 7) | `~/.linqora-signing/linqora-release.jks` — never reuse |
 
 Changing `applicationId` after users install the app forces a reinstall, so treat `com.linqora.books` as
@@ -83,6 +83,23 @@ The APK is at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 Updating: install a newer `app-debug.apk` the same way; it replaces the old one and keeps data (same debug key on this PC).
 A build from another computer has a different debug key — uninstall first, which deletes the local data on the phone.
 (The app's backup export does not work inside Android yet — Phase 4 — so treat phone data as test data.)
+
+## Back button
+
+Hardware/system Back is handled by `@capacitor/app` + React Router (`src/navigation/`). One native listener is
+installed for the page lifetime; each press is decided by `resolveBack`, in this order:
+
+1. A text field is focused → the field is blurred (keyboard hides). Nothing else happens.
+2. A panel or dialog is open (record payment, apply advance, void, reconcile, refund, reset, "discard changes?") → it closes.
+3. Dashboard (and onboarding entry screens: welcome, subscription intro, setup) → "Press back again to exit";
+   a second press within 2 seconds exits.
+4. Otherwise → previous screen; if the screen was opened without history (e.g. after a restart) → its parent
+   screen (e.g. invoice → Quotations & invoices → Dashboard). Back never closes the app from a secondary screen.
+
+Forms with unsaved changes (add entry, quotation/invoice/bill editor, customer/supplier, project, account,
+business setup and Settings profile) ask "Discard unsaved changes?" before leaving — for hardware Back, the bottom
+navigation and browser Back alike. "Keep editing" (or Back) stays with the typed values intact. Inline panels
+(payment, advance, void reason) close on Back like a dialog and keep no draft.
 
 ## Backup and data extraction
 

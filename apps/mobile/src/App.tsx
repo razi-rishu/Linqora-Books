@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { createHashRouter, RouterProvider, type RouteObject } from 'react-router';
+import { createHashRouter, Outlet, RouterProvider, type RouteObject } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppShell } from '@/components/AppShell';
+import { BackButtonHandler } from '@/navigation/BackButtonHandler';
 import { RepositoryContext } from '@/data/books';
 import type { BooksRepository } from '@/data/repository';
 import { LocalBooksRepository } from '@/data/local-repository';
@@ -19,7 +20,7 @@ import { ReportsScreen } from '@/screens/reports';
 import { HelpScreen, IntegrationsScreen, MoreScreen } from '@/screens/more';
 import { SettingsScreen, SubscriptionScreen } from '@/screens/settings';
 
-const routes: RouteObject[] = [
+const screens: RouteObject[] = [
   { path: '/', element: <SplashScreen /> },
   { path: '/welcome', element: <WelcomeScreen /> },
   { path: '/sign-in', element: <SignInScreen /> },
@@ -60,6 +61,18 @@ const routes: RouteObject[] = [
   },
   { path: '*', element: <SplashScreen /> },
 ];
+
+/** Root layout: everything the router renders gets hardware Back handling. */
+function RootLayout() {
+  return (
+    <>
+      <BackButtonHandler />
+      <Outlet />
+    </>
+  );
+}
+
+const routes: RouteObject[] = [{ element: <RootLayout />, children: screens }];
 
 function ThemeSync() {
   const theme = usePreferences((s) => s.theme);

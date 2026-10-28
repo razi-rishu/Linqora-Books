@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, Input, Select, Textarea } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation } from '@/data/books';
 import { formatDate } from '@/lib/utils';
+import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
+import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
 
 const STATUS_LABEL: Record<ProjectStatus, string> = { planned: 'Planned', active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
 
@@ -290,6 +292,7 @@ export function ProjectFormScreen() {
     },
   });
   const e = formState.errors;
+  const guard = useUnsavedChangesGuard(formState.isDirty);
   if (!data.business.modules.projects) return <ModuleOff />;
   if (!access.canWrite) {
     return (
@@ -302,6 +305,7 @@ export function ProjectFormScreen() {
   return (
     <>
       <PageHeader title={existing ? 'Edit project' : 'New project'} back />
+      <UnsavedChangesDialog guard={guard} />
       <form
         noValidate
         className="space-y-4 md:max-w-xl"
@@ -334,6 +338,7 @@ export function ProjectFormScreen() {
             ...(v.notes.trim() ? { notes: v.notes.trim() } : {}),
           };
           await mutation.mutateAsync({ type: 'project', project });
+          guard.allowNavigation();
           navigate(`/app/projects/${project.id}`, { replace: true });
         })}
       >

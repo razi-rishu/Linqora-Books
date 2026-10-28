@@ -25,6 +25,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Field, Input, Select } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation, useToday } from '@/data/books';
 import { cn, formatDate } from '@/lib/utils';
+import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
+import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 /** direction "none": no money moves (an advance applied to an invoice). */
 const KIND_META: Record<TransactionKind, { label: string; direction: 'in' | 'out' | 'move' | 'none' }> = {
@@ -240,6 +243,7 @@ export function AddTransactionScreen() {
   });
   const kind = useWatch({ control, name: 'kind' });
   const e = formState.errors;
+  const guard = useUnsavedChangesGuard(formState.isDirty);
   const categoryKind = kind === 'expense' ? 'expense' : 'income';
   const contacts = data.contacts.filter((c) => !c.archived && (kind === 'expense' ? c.kind !== 'customer' : c.kind !== 'supplier'));
 
@@ -311,12 +315,14 @@ export function AddTransactionScreen() {
       setError('root', { message: err instanceof Error ? err.message : 'Could not save' });
       return;
     }
+    guard.allowNavigation();
     navigate('/app/transactions', { replace: true });
   });
 
   return (
     <>
       <PageHeader title="Add entry" back />
+      <UnsavedChangesDialog guard={guard} />
       <form noValidate onSubmit={onSubmit} className="space-y-4 md:max-w-xl">
         <fieldset>
           <legend className="mb-2 text-sm font-medium">Type</legend>
@@ -479,6 +485,7 @@ export function TransactionDetailScreen() {
   const mutation = useBooksMutation();
   const [reason, setReason] = useState('');
   const [voiding, setVoiding] = useState(false);
+  useBackHandler(voiding, () => setVoiding(false));
   const [voidError, setVoidError] = useState<string | null>(null);
   const txn = data.transactions.find((t) => t.id === id);
   if (!txn) {
@@ -590,6 +597,7 @@ function AdvancePanel({ advance }: { advance: Transaction }) {
   const uses = data.transactions.filter((t) => t.advanceId === advance.id);
   const accounts = data.accounts.filter((a) => !a.archived);
   const [open, setOpen] = useState(false);
+  useBackHandler(open, () => setOpen(false));
   const [amount, setAmount] = useState(toDecimalString(remaining, advance.currency));
   const [date, setDate] = useState(today);
   const [accountId, setAccountId] = useState(advance.accountId ?? accounts[0]?.id ?? '');

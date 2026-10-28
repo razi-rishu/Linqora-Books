@@ -13,6 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, Input, Select, Textarea } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation, useToday } from '@/data/books';
 import { cn, formatDate } from '@/lib/utils';
+import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
+import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
 
 const KIND_LABEL: Record<ContactKind, string> = { customer: 'Customer', supplier: 'Supplier', both: 'Customer & supplier' };
 
@@ -259,6 +261,7 @@ export function ContactFormScreen() {
     },
   });
   const e = formState.errors;
+  const guard = useUnsavedChangesGuard(formState.isDirty);
   if (!access.canWrite) {
     return (
       <>
@@ -271,6 +274,7 @@ export function ContactFormScreen() {
   return (
     <>
       <PageHeader title={existing ? 'Edit contact' : 'New contact'} back />
+      <UnsavedChangesDialog guard={guard} />
       <form
         noValidate
         className="space-y-4 md:max-w-xl"
@@ -295,6 +299,7 @@ export function ContactFormScreen() {
             ...optional('notes'),
           };
           await mutation.mutateAsync({ type: 'contact', contact });
+          guard.allowNavigation();
           navigate(`/app/contacts/${contact.id}`, { replace: true });
         })}
       >

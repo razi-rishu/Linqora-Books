@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.5.3",
     "@hookform/resolvers": "6.0.0",
     "@linqora-books/accounting-core": "workspace:*",

@@ -14,6 +14,7 @@ import { usePreferences, type ThemePreference } from '@/state/preferences';
 import { useSession } from '@/state/session';
 import { BusinessForm } from './business';
 import { cn, downloadText, formatDate } from '@/lib/utils';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 export function SettingsScreen() {
   const data = useBooks();
@@ -26,6 +27,7 @@ export function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  useBackHandler(confirmReset, () => setConfirmReset(false));
   const sample = hasSampleData(data);
   const currencyLocked = isCurrencyLocked(data);
 
@@ -50,6 +52,7 @@ export function SettingsScreen() {
                   setTimeout(() => setSaved(false), 2500);
                 } catch (err) {
                   setProfileError(err instanceof Error ? err.message : 'Could not save');
+                  return false;
                 }
               }}
             />

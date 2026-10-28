@@ -39,6 +39,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, Input, Select, Textarea } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation, useToday } from '@/data/books';
 import { cn, formatDate } from '@/lib/utils';
+import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
+import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 const TYPE_LABEL: Record<DocumentType, { one: string; many: string }> = {
   quotation: { one: 'Quotation', many: 'Quotations' },
@@ -205,6 +208,7 @@ export function DocumentEditorScreen() {
   const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
   const watchedLines = useWatch({ control, name: 'lines' });
   const e = formState.errors;
+  const guard = useUnsavedChangesGuard(formState.isDirty);
 
   const previewTotals = (() => {
     try {
@@ -290,12 +294,14 @@ export function DocumentEditorScreen() {
           : {}),
     };
     await mutation.mutateAsync({ type: 'documents', documents: [doc] });
+    guard.allowNavigation();
     navigate(`/app/documents/${doc.id}`, { replace: true });
   });
 
   return (
     <>
       <PageHeader title={`${existing ? 'Edit' : 'New'} ${TYPE_LABEL[type].one.toLowerCase()}`} subtitle={existing?.number ?? 'Draft'} back />
+      <UnsavedChangesDialog guard={guard} />
       <form noValidate onSubmit={onSubmit} className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <Field label={type === 'bill' ? 'Supplier' : 'Customer'} error={e.contactId?.message}>
@@ -644,6 +650,7 @@ export function DocumentDetailScreen() {
   const navigate = useNavigate();
   const mutation = useBooksMutation();
   const [panel, setPanel] = useState<'none' | 'payment' | 'advance' | 'void'>('none');
+  useBackHandler(panel !== 'none', () => setPanel('none'));
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const doc = data.documents.find((d) => d.id === id);

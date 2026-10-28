@@ -128,6 +128,16 @@ aapt dump badging app-debug.apk         # verify package identity
   Totals: 110 unit/component tests + 1 E2E, all passing; debug APK built via `pnpm android:debug`.
 - Still open: device testing on a real phone; supplier prepayments; post-dated cheques.
 
+### Android Back button fix (28 Oct 2026)
+
+- Bug (found on a real phone): system Back closed the app. Cause: no `backButton` handling, so Capacitor finished
+  the activity. Fix: `@capacitor/app` 8.1.2 + `src/navigation/` (see ANDROID_SETUP.md → Back button): keyboard first,
+  then panels/dialogs, then history or parent screen; "press back again to exit" on the dashboard; unsaved-changes
+  prompt via React Router's blocker (also covers browser Back); one listener per page lifetime.
+- Tests: 9 decision-logic unit tests + 12 integration tests driving the real app through a simulated native Back
+  (10 of the 12 fail with the handler removed). Totals: 133 unit/component tests + 1 E2E, all passing.
+- Android: versionCode 3 / versionName 0.1.2; App plugin bundled; backup exclusions unchanged.
+
 ## 9. Requirements for Supabase integration (Phase 2)
 
 - Your approval to create a **new, dedicated** Supabase project for Linqora Books (region, e.g. Mumbai), billing tier.

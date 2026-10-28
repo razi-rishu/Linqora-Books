@@ -12,6 +12,9 @@ import { Card } from '@/components/ui/card';
 import { Field, Input, Select } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation, useToday } from '@/data/books';
 import { formatDate } from '@/lib/utils';
+import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
+import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 const KIND_ICON = { cash: Banknote, bank: Landmark, wallet: Wallet } as const;
 const KIND_LABEL = { cash: 'Cash', bank: 'Bank account', wallet: 'Wallet / UPI' } as const;
@@ -21,6 +24,7 @@ function Reconcile({ account, balance }: { account: MoneyAccount; balance: numbe
   const actor = useActor();
   const mutation = useBooksMutation();
   const [open, setOpen] = useState(false);
+  useBackHandler(open, () => setOpen(false));
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   if (!open) {
@@ -163,6 +167,7 @@ export function AccountFormScreen() {
     defaultValues: { name: '', kind: 'bank' as const, openingBalance: '0', openingDate: today },
   });
   const e = formState.errors;
+  const guard = useUnsavedChangesGuard(formState.isDirty);
   if (!access.canWrite) {
     return (
       <>
@@ -174,6 +179,7 @@ export function AccountFormScreen() {
   return (
     <>
       <PageHeader title="New account" back />
+      <UnsavedChangesDialog guard={guard} />
       <form
         noValidate
         className="space-y-4 md:max-w-xl"
@@ -208,6 +214,7 @@ export function AccountFormScreen() {
               archived: false,
             },
           });
+          guard.allowNavigation();
           navigate('/app/accounts', { replace: true });
         })}
       >
