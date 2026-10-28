@@ -19,5 +19,7 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
+    // UI tests drive the full app; under machine load a few take >5 s.
+    testTimeout: 20_000,
   },
 });

@@ -1,0 +1,15 @@
+{
+  "name": "@linqora-books/supabase",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Linqora Books database: migrations, RLS policies and their tests (run against embedded Postgres via PGlite)",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@linqora-books/accounting-core": "workspace:*"
+  }
+}

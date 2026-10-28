@@ -25,3 +25,4 @@ keystore.properties
 # Cloudflare
 .wrangler/
 .dev.vars
+backups/
