@@ -31,6 +31,9 @@ These rules are implemented in `packages/accounting-core` and covered by its tes
 | Direct expense | + expense | + money out |
 | Refund given | − revenue | + money out |
 | Transfer between own accounts | — | — (balances move; total unchanged) |
+| Customer advance received | — | + money in (held for the customer) |
+| Advance applied to an invoice | — (settles the invoice) | — (no money moves) |
+| Unused advance refunded | — | + money out |
 
 This is how double counting is avoided: an invoice's revenue is recognised **once**, when issued; its
 payments only move cash. Direct income/expense entries cannot be linked to an invoice/bill
@@ -39,6 +42,45 @@ payments only move cash. Direct income/expense entries cannot be linked to an in
 **Tax.** Invoice and bill revenue/expense exclude tax; receivable and payable balances include tax
 (it is what the customer owes). Direct income/expense entries have no tax breakdown in Phase 1 and are
 taken at face value.
+
+## Customer advances
+
+Money a customer pays **before** an invoice exists (booking amounts, deposits) is a **customer advance**,
+not sales. Recorded as three transaction kinds:
+
+| Kind | Account | Effect |
+|---|---|---|
+| `advance_received` | required | Cash in. Increases the advance **held** for that customer (owed to them until used). No revenue. |
+| `advance_applied` | **none** | Settles an issued invoice of the same customer from the held advance. No cash, no revenue — the invoice already recognised the revenue when issued. |
+| `advance_refunded` | required | Returns unused advance: cash out, held amount falls. Not a sales refund (does not reduce revenue). |
+
+Rules (`validateTransaction`, `validateTransactionInBooks`, `validateVoidTransaction`):
+
+- A1 An advance belongs to one customer (a contact of kind customer/both); it takes no category and no invoice when received.
+- A1 It can be applied only to that customer's **issued** invoices, dated on or after both the advance and the invoice.
+- A2 Applications + refunds never exceed the advance; an application never exceeds the invoice balance.
+- An advance cannot be voided while non-void applications/refunds use it — void those first. An invoice cannot be
+  voided while applied advances settle it (same rule as payments).
+- `customerAdvances()` reports the unused amount per customer (dashboard tile, customer page, Reports → Customer advances).
+
+Why not record early money as a payment? The invoice does not exist yet, and recording it as income would count
+the sale twice when the invoice is issued. The advance keeps cash correct now and revenue correct later.
+
+## Dates
+
+Checked by `validateTransactionInBooks` (and enforced again by the repository on every save):
+
+- **D1 Opening date.** An account's opening balance is its balance at the **start** of its opening date. Entries on
+  or after that date count; entries before it are rejected (for both sides of a transfer). This keeps
+  "money received/spent" and account balances consistent. To record earlier history, change the opening balance or date.
+  The opening date itself cannot be in the future.
+- **D2 No future money.** Cash movements (and advance applications) cannot be dated after today in the business's
+  time zone. Otherwise "money received this month" could include money that is in no balance yet. Invoices, bills
+  and quotations may still be future-dated. (Post-dated cheques are a future feature.)
+- **D3 Payment after document.** A payment cannot be dated before the invoice or bill it settles; a refund linked to an
+  invoice cannot be dated before it. Money received earlier is a customer advance. Supplier prepayments are not modelled
+  yet — record the bill first.
+- Payments must match the document type (received → invoice, made → bill) and the document's contact.
 
 ## What is excluded from all totals
 
@@ -58,7 +100,8 @@ taken at face value.
   invoice with the same `convertedFromId`; the button is disabled while saving.
 - **Issue:** draft → issued, requires ≥1 line and a positive total.
 - **Payments:** only against issued invoices/bills; amount must be > 0 and ≤ outstanding balance (no
-  overpayments in Phase 1). Status is derived: unpaid / partly paid / paid / overdue.
+  overpayments in Phase 1); dated on or after the document (D3). Invoices may also be settled by applied
+  advances. Status is derived from payments + applied advances: unpaid / partly paid / paid / overdue.
 - **Void:** issued → void with a required reason, who and when. Not allowed while non-void payments exist.
 - **Delete:** only drafts. Finalised records are voided, never deleted. Deleting the draft invoice created
   by a conversion returns its quotation to *accepted* in the same write (`releaseConvertedQuotation`), so it
@@ -73,7 +116,7 @@ taken at face value.
 
 ## Accounts
 
-- Opening balance + opening date per account; transactions dated before the opening date are ignored for that account.
+- Opening balance + opening date per account (balance at the start of that day). Entries cannot be dated before it (D1).
 - Reconciliation: user enters a statement balance for today; the app stores it and shows the
   difference against the computed balance at that date.
 

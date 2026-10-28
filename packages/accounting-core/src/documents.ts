@@ -177,11 +177,28 @@ export function validatePayment(
   return { ok: true };
 }
 
-/** Rules every transaction must satisfy before it is saved. */
+/**
+ * Shape rules every transaction must satisfy on its own. Rules that need the rest of
+ * the books (dates, balances, linked records) are in `validateTransactionInBooks`.
+ */
 export function validateTransaction(txn: Transaction): string[] {
   const errors: string[] = [];
   if (!Number.isSafeInteger(txn.amount) || txn.amount <= 0) errors.push('Amount must be greater than zero');
-  if (!txn.accountId) errors.push('Choose an account');
+  if (txn.kind === 'advance_applied') {
+    if (txn.accountId) errors.push('Applying an advance moves no money and takes no account');
+  } else if (!txn.accountId) {
+    errors.push('Choose an account');
+  }
+  const usesAdvance = txn.kind === 'advance_applied' || txn.kind === 'advance_refunded';
+  if (usesAdvance && !txn.advanceId) errors.push('Choose the advance being used');
+  if (!usesAdvance && txn.advanceId) errors.push('Only advance applications and refunds refer to an advance');
+  if (txn.kind === 'advance_received') {
+    if (!txn.contactId) errors.push('Choose the customer who paid the advance');
+    if (txn.documentId) errors.push('An advance is not linked to an invoice when received — apply it to the invoice later');
+    if (txn.categoryId) errors.push('An advance is not income and takes no category');
+  }
+  if (txn.kind === 'advance_applied' && !txn.documentId) errors.push('Choose the invoice the advance is applied to');
+  if (txn.kind === 'advance_refunded' && txn.documentId) errors.push('An advance refund is not linked to an invoice');
   if (txn.kind === 'transfer') {
     if (!txn.toAccountId) errors.push('Choose the destination account');
     else if (txn.toAccountId === txn.accountId) errors.push('Source and destination accounts must differ');

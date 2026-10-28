@@ -1,5 +1,12 @@
 import type { Actor, BooksData, BusinessDocument, Transaction } from '@linqora-books/accounting-core';
-import { isCurrencyLocked, releaseConvertedQuotation, validateTransaction } from '@linqora-books/accounting-core';
+import {
+  isCurrencyLocked,
+  releaseConvertedQuotation,
+  todayInTimeZone,
+  validateTransaction,
+  validateTransactionInBooks,
+  validateVoidTransaction,
+} from '@linqora-books/accounting-core';
 import { RepositoryError, type BooksRepository } from './repository';
 
 const STORAGE_KEY = 'linqora-books:data:v1';
@@ -23,7 +30,11 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
 export class LocalBooksRepository implements BooksRepository {
   readonly kind = 'local-device' as const;
 
-  constructor(private readonly storage: Storage = window.localStorage) {}
+  constructor(
+    private readonly storage: Storage = window.localStorage,
+    /** Clock, injectable for tests. */
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   private read(): BooksData | null {
     const raw = this.storage.getItem(STORAGE_KEY);
@@ -85,10 +96,18 @@ export class LocalBooksRepository implements BooksRepository {
   }
 
   async saveTransaction(transaction: Transaction): Promise<void> {
-    const errors = validateTransaction(transaction);
-    if (errors.length) throw new RepositoryError(errors.join('. '));
-    const existing = this.read()?.transactions.find((t) => t.id === transaction.id);
+    const data = this.read();
+    if (!data) throw new RepositoryError('Set up your business first.');
+    const existing = data.transactions.find((t) => t.id === transaction.id);
     if (existing?.status === 'void') throw new RepositoryError('Void transactions cannot be changed.');
+    const errors =
+      existing && transaction.status === 'void'
+        ? validateVoidTransaction(transaction, data.transactions)
+        : [
+            ...validateTransaction(transaction),
+            ...validateTransactionInBooks(transaction, data, todayInTimeZone(data.business.timeZone, this.now())),
+          ];
+    if (errors.length) throw new RepositoryError(errors.map((e) => e.replace(/\.$/, '')).join('. ') + '.');
     return this.save('transactions', transaction);
   }
 

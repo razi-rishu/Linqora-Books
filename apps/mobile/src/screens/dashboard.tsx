@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, FilePlus2, Landmark, Plus, Users, Truck } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, FilePlus2, HandCoins, Landmark, Plus, Users, Truck } from 'lucide-react';
 import { dashboardSummary, financialYearOf, monthOf, type Period } from '@linqora-books/accounting-core';
 import { Money, PageHeader, ProfitLoss, ReadOnlyNotice, StatTile } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -135,6 +135,16 @@ export function DashboardScreen() {
         <Link to="/app/reports#payables">
           <StatTile icon={<Truck />} label="You owe suppliers" value={<Money amount={s.payable} currency={c} />} />
         </Link>
+        {s.advancesHeld > 0 && (
+          <Link to="/app/reports#advances" className="col-span-2 lg:col-span-4">
+            <StatTile
+              icon={<HandCoins />}
+              label="Customer advances held"
+              value={<Money amount={s.advancesHeld} currency={c} />}
+              hint="Paid before invoicing — not counted as sales until applied to an invoice"
+            />
+          </Link>
+        )}
       </div>
 
       {access.canWrite && (

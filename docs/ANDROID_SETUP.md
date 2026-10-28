@@ -6,7 +6,7 @@
 |---|---|---|
 | applicationId / namespace | `com.linqora.books` | `com.linqora.app` |
 | App name | Linqora Books | Linqora |
-| Version | versionCode 1, versionName 0.1.0 | separate |
+| Version | versionCode 2, versionName 0.1.1 | separate |
 | Signing key | **to be created** for Books (Phase 7) | `~/.linqora-signing/linqora-release.jks` — never reuse |
 
 Changing `applicationId` after users install the app forces a reinstall, so treat `com.linqora.books` as
@@ -54,6 +54,48 @@ pnpm android:sync
 ```
 
 Then rebuild in Android Studio (open `apps/mobile/android`) or run `gradlew.bat assembleDebug` again.
+
+## Install on a Samsung (or any Android) phone
+
+The APK is at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
+
+**Option A — copy the file (no cable setup)**
+
+1. Copy `app-debug.apk` to the phone: USB cable (phone shows as a drive → put it in *Download*), Google Drive,
+   or Quick Share / Nearby Share from the PC.
+2. On the phone open **My Files → Downloads** (or Internal storage → Download) and tap `app-debug.apk`.
+3. If asked, allow **Install unknown apps** for My Files (or the app you opened it from) → go back → tap again.
+4. If **Auto Blocker** is on (One UI 6+), Samsung blocks it: *Settings → Security and privacy → Auto Blocker* → turn off
+   temporarily, install, then turn it back on.
+5. Play Protect may warn about an unknown developer → *More details → Install anyway*. This is expected for a debug build.
+6. Open **Linqora Books** from the app drawer.
+
+**Option B — USB debugging (adb)**
+
+1. *Settings → About phone → Software information* → tap **Build number** 7 times (Developer options).
+2. *Settings → Developer options → USB debugging* on; connect the cable; accept the "Allow USB debugging" prompt.
+3. On the PC:
+
+```powershell
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" install -r apps\mobile\android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+Updating: install a newer `app-debug.apk` the same way; it replaces the old one and keeps data (same debug key on this PC).
+A build from another computer has a different debug key — uninstall first, which deletes the local data on the phone.
+(The app's backup export does not work inside Android yet — Phase 4 — so treat phone data as test data.)
+
+## Backup and data extraction
+
+`android:allowBackup="false"` and `res/xml/data_extraction_rules.xml` exclude **all** app data from Google cloud
+backup and from device-to-device transfer (Android 12+ needs the rules file; `allowBackup=false` alone still allows
+device transfer). Consequences while data is local-only:
+
+- Uninstalling, clearing app data, or switching phones **loses the books**. *Settings → Export full backup (JSON)*
+  works in the browser version only; on Android, file export arrives in Phase 4. Treat phone data as test data until then.
+- Samsung Smart Switch and Google's phone-to-phone copy will not carry Linqora Books data.
+
+Revisit in Phase 2: once records live in Supabase, keep auth tokens and caches excluded; nothing needs restoring
+from Android backup.
 
 ## Release builds (Phase 7 — not done)
 

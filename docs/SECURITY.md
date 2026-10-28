@@ -9,6 +9,10 @@
 - No payment, card or bank credentials are requested anywhere. Account forms warn users not to enter them.
 - CSV export neutralises spreadsheet formula injection (cells starting with `= + - @`).
 - Capacitor: `allowMixedContent: false`; no native plugins with extra permissions.
+- Android: `allowBackup="false"` and data-extraction rules exclude all app data from Google cloud backup and
+  device-to-device transfer, so unencrypted local financial data never leaves the phone that way.
+- FileProvider (`res/xml/file_paths.xml`, Capacitor default) is not exported and only grants per-URI access;
+  unused in Phase 1. Narrow its paths when Phase 4 adds file sharing.
 
 ## Target design (Phase 2+)
 

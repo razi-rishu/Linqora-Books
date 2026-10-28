@@ -113,8 +113,20 @@ aapt dump badging app-debug.apk         # verify package identity
 - Deleting the draft invoice created from a quotation left the quotation "converted" and pointing at a missing
   invoice, so it could never be converted again. The quotation now returns to "accepted" in the same write.
 - Regression tests added for both (shown to fail without the fixes). Totals: 89 unit/component tests + 1 E2E.
-- Still open (non-blocking): income dated before an account's opening date counts as cash in but not in the
-  balance; payment dates are not checked against the invoice issue date; `allowBackup` decision; device testing.
+
+### Pre-Phase 2 accounting and Android hardening (28 Oct 2026)
+
+- Date rules D1–D3 (see ACCOUNTING_RULES.md → Dates): no entries before an account's opening date, no future-dated
+  money movements, no payment before its invoice/bill. Enforced in `validateTransactionInBooks`, in every form, and
+  again in the repository. Fixes "cash in ≠ balance" for pre-opening entries and payments dated before invoices.
+- Customer advances: `advance_received` / `advance_applied` / `advance_refunded`. Advances are cash, never revenue;
+  applying one settles an invoice without counting the sale twice. UI: "Customer advance" entry type, "Apply advance"
+  on invoices, refund from the advance, dashboard tile, customer page, Reports section + CSV. Sample data includes one.
+- Android: `allowBackup="false"` plus `data_extraction_rules.xml` excluding every domain from cloud backup **and**
+  device-to-device transfer (needed on Android 12+). versionCode 2 / versionName 0.1.1.
+- Regression tests: 14 core + 5 repository + 3 UI (the date-rule tests fail when the rules are disabled).
+  Totals: 110 unit/component tests + 1 E2E, all passing; debug APK built via `pnpm android:debug`.
+- Still open: device testing on a real phone; supplier prepayments; post-dated cheques.
 
 ## 9. Requirements for Supabase integration (Phase 2)
 

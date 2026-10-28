@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   convertQuotationToInvoice,
   dashboardSummary,
+  documentBalance,
+  validateTransactionInBooks,
+  voidTransaction,
   financialYearOf,
   transitionQuotation,
   type BusinessProfile,
@@ -24,6 +27,8 @@ const business: BusinessProfile = {
 const TODAY = '2026-10-28';
 const NOW = '2026-10-28T06:00:00.000Z';
 const actor = { userId: 'user_2', now: '2026-10-28T07:00:00.000Z' };
+/** Fixed clock: 28 Oct 2026, 11:30 in Asia/Kolkata. */
+const clock = () => new Date(NOW);
 
 function userTxn(partial: Partial<Transaction>): Transaction {
   return {
@@ -48,7 +53,7 @@ function userTxn(partial: Partial<Transaction>): Transaction {
 describe('LocalBooksRepository', () => {
   let repo: LocalBooksRepository;
   beforeEach(async () => {
-    repo = new LocalBooksRepository(localStorage);
+    repo = new LocalBooksRepository(localStorage, clock);
     await repo.saveBusiness(business, buildSampleData(business, 'u', TODAY, NOW));
   });
 
@@ -61,6 +66,46 @@ describe('LocalBooksRepository', () => {
   it('rejects invalid transactions', async () => {
     await expect(repo.saveTransaction(userTxn({ kind: 'transfer', toAccountId: 'sample_acc_cash' }))).rejects.toThrow(/must differ/);
     await expect(repo.saveTransaction(userTxn({ amount: 0 }))).rejects.toThrow(/greater than zero/);
+  });
+
+  it('rejects entries dated before the account opening date (D1)', async () => {
+    // Sample accounts open 90 days before TODAY (30 Jul 2026).
+    await expect(repo.saveTransaction(userTxn({ date: '2026-07-29' }))).rejects.toThrow(/starts on 30 Jul 2026/);
+    await repo.saveTransaction(userTxn({ date: '2026-07-30' }));
+  });
+
+  it('rejects money movements dated after today (D2)', async () => {
+    await expect(repo.saveTransaction(userTxn({ date: '2026-10-29' }))).rejects.toThrow(/cannot be dated in the future/);
+  });
+
+  it('rejects a payment dated before its invoice and accepts it as an advance instead (D3)', async () => {
+    // INV/…/0002 for Horizon was issued 10 days before TODAY (18 Oct).
+    const early = userTxn({ id: 'pay_early', kind: 'payment_received', documentId: 'sample_doc_inv2', contactId: 'sample_con_horizon', date: '2026-10-15', amount: 5000_00 });
+    await expect(repo.saveTransaction(early)).rejects.toThrow(/customer advance/);
+
+    const advance = userTxn({ id: 'adv_early', kind: 'advance_received', contactId: 'sample_con_horizon', date: '2026-10-15', amount: 5000_00 });
+    await repo.saveTransaction(advance);
+    const { accountId: _cashAccount, ...noAccount } = userTxn({});
+    void _cashAccount;
+    const apply: Transaction = {
+      ...noAccount,
+      id: 'apply_1',
+      kind: 'advance_applied',
+      advanceId: 'adv_early',
+      documentId: 'sample_doc_inv2',
+      contactId: 'sample_con_horizon',
+      date: '2026-10-20',
+      amount: 5000_00,
+    };
+    await repo.saveTransaction(apply);
+    const data = (await repo.load())!;
+    const inv2 = data.documents.find((d) => d.id === 'sample_doc_inv2')!;
+    expect(documentBalance(inv2, data.transactions)).toBe(17_700_00 - 5_000_00);
+
+    // The advance cannot be voided while applied; the application can.
+    await expect(repo.saveTransaction(voidTransaction(advance, 'Mistake', actor))).rejects.toThrow(/applications and refunds/);
+    await repo.saveTransaction(voidTransaction(apply, 'Applied to wrong invoice', actor));
+    await repo.saveTransaction(voidTransaction(advance, 'Mistake', actor));
   });
 
   it('refuses to change void transactions', async () => {
@@ -172,6 +217,14 @@ describe('sample data', () => {
     }
   });
 
+  it('includes a customer advance that is cash, not sales', () => {
+    const advance = sample.transactions.find((t) => t.kind === 'advance_received')!;
+    expect(advance).toMatchObject({ amount: 20_000_00, contactId: 'sample_con_horizon' });
+    for (const t of sample.transactions.filter((x) => x.status === 'posted')) {
+      expect(validateTransactionInBooks(t, { business, ...sample, transactions: sample.transactions.filter((x) => x.id !== t.id) }, TODAY)).toEqual([]);
+    }
+  });
+
   it('produces consistent dashboard figures', () => {
     const s = dashboardSummary({ business, ...sample }, financialYearOf(TODAY, 4), TODAY);
     // Invoices: 1,50,000 + 15,000 (net of tax); direct income 8,500 + 12,000; refund 1,500
@@ -182,6 +235,8 @@ describe('sample data', () => {
     expect(s.receivable).toBe((77_000 + 17_700) * 100);
     expect(s.overdueReceivable).toBe(77_000 * 100);
     expect(s.payable).toBe((53_100 - 30_000) * 100);
-    expect(s.totalCashAndBank).toBe(200_350 * 100);
+    // Includes the ₹20,000 advance in the bank, which is not revenue.
+    expect(s.totalCashAndBank).toBe(220_350 * 100);
+    expect(s.advancesHeld).toBe(20_000 * 100);
   });
 });

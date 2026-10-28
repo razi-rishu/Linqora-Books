@@ -5,6 +5,7 @@ import {
   addCalendarMonths,
   addDays,
   cashFlow,
+  customerAdvances,
   financialYearOf,
   monthlyReport,
   monthOf,
@@ -63,6 +64,7 @@ export function ReportsScreen() {
   const months = monthlyReport(data, period, c);
   const rec = receivables(data, today);
   const pay = payables(data, today);
+  const adv = customerAdvances(data.transactions, today);
   const balances = accountBalances(data.accounts, data.transactions, period.end < today ? period.end : today);
   const contactName = (id: string) => data.contacts.find((x) => x.id === id)?.name ?? 'Unknown';
   const categoryName = (id: string) => data.categories.find((x) => x.id === id)?.name ?? 'Uncategorised';
@@ -290,6 +292,38 @@ export function ReportsScreen() {
             ))
           ) : (
             <p className="text-sm text-muted-foreground">You don't owe any supplier.</p>
+          )}
+        </Section>
+
+        <Section
+          id="advances"
+          title="Customer advances held (today)"
+          action={
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                exportCsv('Customer advances', [
+                  ['Customer', 'Advance date', 'Description', 'Unused amount'],
+                  ...adv.flatMap((a) => a.advances.map((x) => [contactName(a.contactId), x.advance.date, x.advance.description, money(x.remaining)])),
+                ])
+              }
+            >
+              <Download /> CSV
+            </Button>
+          }
+        >
+          {adv.length ? (
+            <>
+              {adv.map((a) => (
+                <Row key={a.contactId} label={`${contactName(a.contactId)} (${a.advances.length})`}>
+                  <Money amount={a.held} currency={c} />
+                </Row>
+              ))}
+              <p className="mt-2 text-xs text-muted-foreground">Money received before invoicing. Owed to the customer until applied to an invoice or refunded; not sales.</p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No unused customer advances.</p>
           )}
         </Section>
 

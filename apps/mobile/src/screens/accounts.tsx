@@ -178,6 +178,10 @@ export function AccountFormScreen() {
         noValidate
         className="space-y-4 md:max-w-xl"
         onSubmit={handleSubmit(async (v) => {
+          if (v.openingDate > today) {
+            setError('openingDate', { message: 'The opening balance date cannot be in the future' });
+            return;
+          }
           let opening: number;
           try {
             opening = parseAmount(v.openingBalance || '0', c, { allowNegative: true });
@@ -223,8 +227,8 @@ export function AccountFormScreen() {
           <Field label={`Opening balance (${c})`} error={e.openingBalance?.message} hint="Overdrafts can be negative">
             {(p) => <Input {...p} inputMode="decimal" {...register('openingBalance')} />}
           </Field>
-          <Field label="As of" error={e.openingDate?.message}>
-            {(p) => <Input {...p} type="date" {...register('openingDate')} />}
+          <Field label="As of" error={e.openingDate?.message} hint="Balance at the start of this day. Entries cannot be dated earlier.">
+            {(p) => <Input {...p} type="date" max={today} {...register('openingDate')} />}
           </Field>
         </div>
         <p className="text-xs text-muted-foreground">Do not enter card numbers or banking passwords. Linqora Books never needs them.</p>

@@ -95,6 +95,8 @@ export function HelpScreen() {
     ['What is the difference between profit and cash?', 'Profit counts sales when you invoice and expenses when you are billed. Cash shows money that actually came in or went out. A big unpaid invoice raises profit but not cash.'],
     ['Why are quotations not in my sales?', 'A quotation is only an offer. When the customer accepts, convert it to an invoice and issue it — then it counts as a sale.'],
     ['How do I record a customer payment?', 'Open the invoice and tap “Record payment”. Partial payments are fine; the balance updates automatically. Do not also add it as income, or it would be counted twice.'],
+    ['A customer paid before I made the invoice. How do I record it?', 'Add a “Customer advance”. The money shows in your bank or cash balance and as an advance held for that customer, but not as sales. When you issue their invoice, open it and tap “Apply advance”. Unused advances can be refunded from the advance itself.'],
+    ['Why can’t I date an entry before an account was opened?', 'An account’s opening balance already covers everything before its opening date. Change the opening balance or date instead. Money movements also cannot be dated in the future, and a payment cannot be dated before its invoice or bill.'],
     ['I made a mistake. Can I delete an entry?', 'Drafts can be deleted. Finalised entries are voided with a reason instead, so your history stays traceable. Then add the correct entry.'],
     ['Is moving cash to the bank an expense?', 'No. Use a Transfer. Transfers change account balances but are never income or expenses.'],
     ['What is “Sample” data?', 'Example records to explore the app. They are not your real books. Remove them in Settings before entering real data.'],

@@ -241,6 +241,17 @@ export function buildSampleData(business: BusinessProfile, userId: string, today
       paymentMethod: 'cash',
       description: 'Refund for cancelled add-on',
     }),
+    // Booking advance before the office refit is invoiced: cash in, not sales.
+    txn('txn_advance', {
+      kind: 'advance_received',
+      date: ago(4),
+      amount: 20_000_00,
+      accountId: 'sample_acc_bank',
+      contactId: 'sample_con_horizon',
+      projectId: 'sample_prj_office',
+      paymentMethod: 'bank_transfer',
+      description: 'Booking advance for office refit',
+    }),
     txn('txn_upi', {
       kind: 'income',
       date: ago(5),

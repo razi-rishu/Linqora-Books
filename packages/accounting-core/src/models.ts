@@ -129,14 +129,17 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 /**
  * Transaction kinds and their effect:
  *
- * | kind             | profit & loss          | cash/bank  |
- * |------------------|------------------------|------------|
- * | income           | + revenue              | money in   |
- * | expense          | + expense              | money out  |
- * | payment_received | none (settles invoice) | money in   |
- * | payment_made     | none (settles bill)    | money out  |
- * | refund_given     | − revenue              | money out  |
- * | transfer         | none                   | moves only |
+ * | kind             | profit & loss          | cash/bank  | customer advance |
+ * |------------------|------------------------|------------|------------------|
+ * | income           | + revenue              | money in   |                  |
+ * | expense          | + expense              | money out  |                  |
+ * | payment_received | none (settles invoice) | money in   |                  |
+ * | payment_made     | none (settles bill)    | money out  |                  |
+ * | refund_given     | − revenue              | money out  |                  |
+ * | transfer         | none                   | moves only |                  |
+ * | advance_received | none                   | money in   | + held           |
+ * | advance_applied  | none (settles invoice) | none       | − held           |
+ * | advance_refunded | none                   | money out  | − held           |
  */
 export const TRANSACTION_KINDS = [
   'income',
@@ -145,8 +148,14 @@ export const TRANSACTION_KINDS = [
   'payment_made',
   'refund_given',
   'transfer',
+  'advance_received',
+  'advance_applied',
+  'advance_refunded',
 ] as const;
 export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
+
+/** Kinds that move money through a cash/bank account. */
+export const CASH_KINDS: readonly TransactionKind[] = TRANSACTION_KINDS.filter((k) => k !== 'advance_applied');
 
 export interface Transaction extends AuditFields {
   kind: TransactionKind;
@@ -154,14 +163,17 @@ export interface Transaction extends AuditFields {
   /** Always positive; the kind decides direction. */
   amount: MinorUnits;
   currency: CurrencyCode;
-  accountId: string;
+  /** Cash/bank account the money moved through. Absent only for advance_applied (no cash moves). */
+  accountId?: string;
   /** Destination account, transfers only. */
   toAccountId?: string;
   contactId?: string;
   categoryId?: string;
   projectId?: string;
-  /** Invoice (payment_received / refund_given) or bill (payment_made). */
+  /** Invoice (payment_received / refund_given / advance_applied) or bill (payment_made). */
   documentId?: string;
+  /** The advance_received being applied or refunded (advance_applied / advance_refunded). */
+  advanceId?: string;
   paymentMethod?: PaymentMethod;
   reference?: string;
   description: string;

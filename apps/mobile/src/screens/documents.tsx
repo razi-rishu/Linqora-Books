@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Ban, Check, FileCheck2, FileText, Pencil, Plus, Printer, Send, ThumbsDown, ThumbsUp, Trash2, Undo2, Wallet } from 'lucide-react';
+import { Ban, Check, FileCheck2, FileText, HandCoins, Pencil, Plus, Printer, Send, ThumbsDown, ThumbsUp, Trash2, Undo2, Wallet } from 'lucide-react';
 import {
   amountSettled,
   canEditDocument,
@@ -21,6 +21,9 @@ import {
   toDecimalString,
   transitionQuotation,
   validatePayment,
+  validateTransaction,
+  validateTransactionInBooks,
+  customerAdvances,
   voidDocument,
   WorkflowError,
   addDays,
@@ -477,7 +480,13 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
           description: `${doc.type === 'bill' ? 'Payment to' : 'Payment from'} ${contact?.name ?? 'contact'} — ${doc.number}`,
           ...(doc.projectId ? { projectId: doc.projectId } : {}),
         };
-        await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+        const problems = validateTransactionInBooks(txn, data, today);
+        if (problems.length) return setError(problems.join(' '));
+        try {
+          await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+        } catch (err) {
+          return setError(err instanceof Error ? err.message : 'Could not save');
+        }
         onDone();
       }}
     >
@@ -485,7 +494,9 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
         <Field label={`Amount (balance ${toDecimalString(balance, doc.currency)})`} error={error ?? undefined}>
           {(p) => <Input {...p} inputMode="decimal" value={amount} onChange={(ev) => setAmount(ev.target.value)} />}
         </Field>
-        <Field label="Date">{(p) => <Input {...p} type="date" value={date} onChange={(ev) => setDate(ev.target.value)} />}</Field>
+        <Field label="Date">
+          {(p) => <Input {...p} type="date" min={doc.issueDate} max={today} value={date} onChange={(ev) => setDate(ev.target.value)} />}
+        </Field>
         <Field label={doc.type === 'bill' ? 'Paid from' : 'Received into'}>
           {(p) => (
             <Select {...p} value={accountId} onChange={(ev) => setAccountId(ev.target.value)}>
@@ -521,6 +532,109 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
   );
 }
 
+/** Settles part of an invoice from money the customer paid in advance. No cash moves. */
+function ApplyAdvanceForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => void }) {
+  const data = useBooks();
+  const today = useToday();
+  const actor = useActor();
+  const mutation = useBooksMutation();
+  const balance = documentBalance(doc, data.transactions);
+  const held = customerAdvances(data.transactions, today).find((a) => a.contactId === doc.contactId)?.advances ?? [];
+  const [advanceId, setAdvanceId] = useState(held[0]?.advance.id ?? '');
+  const selected = held.find((h) => h.advance.id === advanceId);
+  const [amount, setAmount] = useState(toDecimalString(Math.min(selected?.remaining ?? 0, balance), doc.currency));
+  const [date, setDate] = useState(today);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!held.length) return <p className="text-sm text-muted-foreground">This customer has no unused advances.</p>;
+
+  return (
+    <form
+      noValidate
+      className="space-y-3"
+      onSubmit={async (ev) => {
+        ev.preventDefault();
+        setError(null);
+        let minor: number;
+        try {
+          minor = parseAmount(amount, doc.currency);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Invalid amount');
+          return;
+        }
+        if (!isISODate(date)) return setError('Enter a valid date');
+        const { userId, now } = actor();
+        const txn: Transaction = {
+          id: newId('txn'),
+          organizationId: data.business.id,
+          createdAt: now,
+          createdBy: userId,
+          updatedAt: now,
+          updatedBy: userId,
+          origin: 'user',
+          kind: 'advance_applied',
+          date,
+          amount: minor,
+          currency: doc.currency,
+          contactId: doc.contactId,
+          documentId: doc.id,
+          advanceId,
+          status: 'posted',
+          description: `Advance applied to ${doc.number}`,
+          ...(doc.projectId ? { projectId: doc.projectId } : {}),
+        };
+        const problems = [...validateTransaction(txn), ...validateTransactionInBooks(txn, data, today)];
+        if (problems.length) return setError(problems.join(' '));
+        try {
+          await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+        } catch (err) {
+          return setError(err instanceof Error ? err.message : 'Could not save');
+        }
+        onDone();
+      }}
+    >
+      <p className="text-xs text-muted-foreground">
+        Uses money the customer already paid. It reduces what they owe on this invoice; no new money is received and sales are not counted again.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Advance" className="col-span-2">
+          {(p) => (
+            <Select
+              {...p}
+              value={advanceId}
+              onChange={(ev) => {
+                setAdvanceId(ev.target.value);
+                const next = held.find((h) => h.advance.id === ev.target.value);
+                setAmount(toDecimalString(Math.min(next?.remaining ?? 0, balance), doc.currency));
+              }}
+            >
+              {held.map(({ advance, remaining }) => (
+                <option key={advance.id} value={advance.id}>
+                  {formatDate(advance.date)} · {advance.description} · unused {toDecimalString(remaining, doc.currency)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={`Amount (balance ${toDecimalString(balance, doc.currency)})`} error={error ?? undefined}>
+          {(p) => <Input {...p} inputMode="decimal" value={amount} onChange={(ev) => setAmount(ev.target.value)} />}
+        </Field>
+        <Field label="Date">
+          {(p) => <Input {...p} type="date" min={doc.issueDate} max={today} value={date} onChange={(ev) => setDate(ev.target.value)} />}
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={mutation.isPending}>
+          <Check /> Apply to invoice
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function DocumentDetailScreen() {
   const { id } = useParams();
   const data = useBooks();
@@ -529,7 +643,7 @@ export function DocumentDetailScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
-  const [panel, setPanel] = useState<'none' | 'payment' | 'void'>('none');
+  const [panel, setPanel] = useState<'none' | 'payment' | 'advance' | 'void'>('none');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const doc = data.documents.find((d) => d.id === id);
@@ -540,6 +654,7 @@ export function DocumentDetailScreen() {
   const totals = documentTotals(doc);
   const settled = amountSettled(doc, data.transactions);
   const balance = documentBalance(doc, data.transactions);
+  const heldForCustomer = customerAdvances(data.transactions, today).find((a) => a.contactId === doc.contactId)?.held ?? 0;
   const status = doc.type === 'quotation' ? doc.status : paymentStatus(doc, data.transactions, today);
   const payments = data.transactions.filter((t) => t.documentId === doc.id);
   const linked = data.documents.find((d) => d.id === (doc.convertedToId ?? doc.convertedFromId));
@@ -642,6 +757,11 @@ export function DocumentDetailScreen() {
               <Wallet /> Record payment
             </Button>
           )}
+          {doc.type === 'invoice' && doc.status === 'issued' && balance > 0 && heldForCustomer > 0 && (
+            <Button size="sm" variant="outline" onClick={() => setPanel('advance')}>
+              <HandCoins /> Apply advance
+            </Button>
+          )}
           {doc.type !== 'quotation' && doc.status === 'issued' && (
             <Button size="sm" variant="ghost" onClick={() => setPanel('void')}>
               <Ban /> Void
@@ -665,6 +785,16 @@ export function DocumentDetailScreen() {
         <p role="alert" className="no-print mb-4 rounded-xl bg-negative-soft p-3 text-sm text-negative">
           {error}
         </p>
+      )}
+      {panel === 'advance' && (
+        <Card className="no-print mb-4">
+          <CardHeader>
+            <CardTitle>Apply customer advance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ApplyAdvanceForm doc={doc} onDone={() => setPanel('none')} />
+          </CardContent>
+        </Card>
       )}
       {panel === 'payment' && (
         <Card className="no-print mb-4">
@@ -809,7 +939,8 @@ export function DocumentDetailScreen() {
                 <li key={p.id}>
                   <Link to={`/app/transactions/${p.id}`} className={cn('flex justify-between px-4 py-3 text-sm hover:bg-muted/60', p.status === 'void' && 'line-through opacity-60')}>
                     <span>
-                      {formatDate(p.date)} · {p.paymentMethod ? PAYMENT_METHOD_LABELS[p.paymentMethod] : ''}
+                      {formatDate(p.date)} ·{' '}
+                      {p.kind === 'advance_applied' ? 'Advance applied' : p.paymentMethod ? PAYMENT_METHOD_LABELS[p.paymentMethod] : ''}
                     </span>
                     <Money amount={p.amount} currency={p.currency} className="font-medium" />
                   </Link>

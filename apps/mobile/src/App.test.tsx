@@ -105,6 +105,57 @@ describe('app', () => {
     expect(screen.getByText('Locked once records exist')).toBeInTheDocument();
   });
 
+  it('records a customer advance as money in without a category, and not as sales', async () => {
+    const { repo } = await setup('#/app/transactions/new?kind=advance_received');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Save entry' }));
+    expect(await screen.findByText('Choose the customer who paid')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Category')).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Amount (INR)'), '15000');
+    await user.type(screen.getByLabelText('Description'), 'Booking advance');
+    await user.selectOptions(screen.getByLabelText('Customer'), 'sample_con_meera');
+    await user.click(screen.getByRole('button', { name: 'Save entry' }));
+
+    await waitFor(async () => {
+      const saved = (await repo.load())!.transactions.find((t) => t.description === 'Booking advance');
+      expect(saved).toMatchObject({ kind: 'advance_received', amount: 1500000, contactId: 'sample_con_meera' });
+      expect(saved?.categoryId).toBeUndefined();
+    });
+  });
+
+  it('shows a clear error for an entry dated in the future', async () => {
+    await setup('#/app/transactions/new?kind=income');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Amount (INR)'), '100');
+    await user.type(screen.getByLabelText('Description'), 'Future sale');
+    await user.selectOptions(screen.getByLabelText('Category'), 'inc_sales');
+    const date = screen.getByLabelText('Date');
+    await user.clear(date);
+    await user.type(date, '2999-01-01');
+    await user.click(screen.getByRole('button', { name: 'Save entry' }));
+    expect(await screen.findByText(/cannot be dated in the future/)).toBeInTheDocument();
+  });
+
+  it('applies a customer advance to an invoice from the invoice screen', async () => {
+    const { repo } = await setup('#/app/documents/sample_doc_inv2');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /Apply advance/ }));
+    // Defaults to the smaller of the unused advance (20,000) and the invoice balance (17,700).
+    expect(screen.getByLabelText(/^Amount \(balance/)).toHaveValue('17700.00');
+    await user.click(screen.getByRole('button', { name: 'Apply to invoice' }));
+
+    await waitFor(async () => {
+      const data = (await repo.load())!;
+      const applied = data.transactions.find((t) => t.kind === 'advance_applied');
+      expect(applied).toMatchObject({ amount: 1770000, documentId: 'sample_doc_inv2', advanceId: 'sample_txn_advance' });
+      expect(applied?.accountId).toBeUndefined();
+    });
+    // Status badge and the totals row both read "Paid"; the payments list names the advance.
+    expect(await screen.findAllByText('Paid')).toHaveLength(2);
+    expect(screen.getByText(/Advance applied/)).toBeInTheDocument();
+  });
+
   it('lists projects with realised profit', async () => {
     await setup('#/app/projects');
     expect(await screen.findByText('Wedding reception — Nair family')).toBeInTheDocument();

@@ -65,12 +65,49 @@ function checkCurrency(currency: CurrencyCode, items: { currency: string }[]): v
   }
 }
 
-/** Amount settled against an invoice or bill by non-void payments. */
+const SETTLES_INVOICE = new Set<Transaction['kind']>(['payment_received', 'advance_applied']);
+const SETTLES_BILL = new Set<Transaction['kind']>(['payment_made']);
+
+/** Amount settled against an invoice or bill by non-void payments and applied advances. */
 export function amountSettled(doc: BusinessDocument, transactions: Transaction[]): MinorUnits {
-  const kind = doc.type === 'bill' ? 'payment_made' : 'payment_received';
+  const kinds = doc.type === 'bill' ? SETTLES_BILL : SETTLES_INVOICE;
   return sumMinor(
-    transactions.filter((t) => isPosted(t) && t.kind === kind && t.documentId === doc.id).map((t) => t.amount),
+    transactions.filter((t) => isPosted(t) && kinds.has(t.kind) && t.documentId === doc.id).map((t) => t.amount),
   );
+}
+
+/** Unused part of a customer advance: received minus non-void applications and refunds. */
+export function advanceRemaining(advance: Transaction, transactions: Transaction[]): MinorUnits {
+  if (advance.kind !== 'advance_received' || !isPosted(advance)) return 0;
+  const used = sumMinor(
+    transactions
+      .filter((t) => isPosted(t) && t.advanceId === advance.id && (t.kind === 'advance_applied' || t.kind === 'advance_refunded'))
+      .map((t) => t.amount),
+  );
+  return advance.amount - used;
+}
+
+export interface CustomerAdvance {
+  contactId: string;
+  /** Money held for the customer, not yet applied to an invoice or refunded. A liability, not revenue. */
+  held: MinorUnits;
+  advances: { advance: Transaction; remaining: MinorUnits }[];
+}
+
+/** Advances held per customer, as of `asOf` (inclusive) when given. */
+export function customerAdvances(transactions: Transaction[], asOf?: ISODate): CustomerAdvance[] {
+  const visible = asOf ? transactions.filter((t) => t.date <= asOf) : transactions;
+  const byContact = new Map<string, CustomerAdvance>();
+  for (const t of visible) {
+    if (t.kind !== 'advance_received' || !isPosted(t) || !t.contactId) continue;
+    const remaining = advanceRemaining(t, visible);
+    if (remaining <= 0) continue;
+    const entry = byContact.get(t.contactId) ?? { contactId: t.contactId, held: 0, advances: [] };
+    entry.held += remaining;
+    entry.advances.push({ advance: t, remaining });
+    byContact.set(t.contactId, entry);
+  }
+  return [...byContact.values()].sort((a, b) => b.held - a.held);
 }
 
 export function documentBalance(doc: BusinessDocument, transactions: Transaction[]): MinorUnits {
@@ -182,10 +219,13 @@ export interface CashFlow {
   net: MinorUnits;
 }
 
-const MONEY_IN = new Set<Transaction['kind']>(['income', 'payment_received']);
-const MONEY_OUT = new Set<Transaction['kind']>(['expense', 'payment_made', 'refund_given']);
+const MONEY_IN = new Set<Transaction['kind']>(['income', 'payment_received', 'advance_received']);
+const MONEY_OUT = new Set<Transaction['kind']>(['expense', 'payment_made', 'refund_given', 'advance_refunded']);
 
-/** Actual money received and spent. Transfers are excluded (they net to zero). */
+/**
+ * Actual money received and spent. Transfers are excluded (they net to zero) and
+ * applying an advance moves no money (it was counted when received).
+ */
 export function cashFlow(transactions: Transaction[], period: Period, currency: CurrencyCode): CashFlow {
   const txns = transactions.filter((t) => isPosted(t) && isInPeriod(t.date, period));
   checkCurrency(currency, txns);
@@ -203,7 +243,9 @@ export function accountEffect(txn: Transaction, accountId: string): MinorUnits {
     return 0;
   }
   if (txn.accountId !== accountId) return 0;
-  return MONEY_IN.has(txn.kind) ? txn.amount : -txn.amount;
+  if (MONEY_IN.has(txn.kind)) return txn.amount;
+  if (MONEY_OUT.has(txn.kind)) return -txn.amount;
+  return 0;
 }
 
 export function accountBalance(account: MoneyAccount, transactions: Transaction[], asOf?: ISODate): MinorUnits {
@@ -322,6 +364,8 @@ export interface DashboardSummary {
   receivable: MinorUnits;
   overdueReceivable: MinorUnits;
   payable: MinorUnits;
+  /** Customer advances held (not yet applied or refunded). Owed to customers; never revenue. */
+  advancesHeld: MinorUnits;
 }
 
 export function dashboardSummary(data: BooksData, period: Period, today: ISODate): DashboardSummary {
@@ -331,6 +375,7 @@ export function dashboardSummary(data: BooksData, period: Period, today: ISODate
   const rec = receivables(data, today);
   const pay = payables(data, today);
   return {
+    advancesHeld: sumMinor(customerAdvances(data.transactions, today).map((a) => a.held)),
     period,
     currency,
     profitAndLoss: profitAndLoss(data, period, currency),

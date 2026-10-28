@@ -3,13 +3,16 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Ban, Paperclip, Plus, RotateCcw, Search, Receipt } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Ban, HandCoins, Link2, Paperclip, Plus, RotateCcw, Search, Receipt } from 'lucide-react';
 import {
+  advanceRemaining,
   isISODate,
   parseAmount,
+  toDecimalString,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   validateTransaction,
+  validateTransactionInBooks,
   voidTransaction,
   type BooksData,
   type Transaction,
@@ -23,18 +26,33 @@ import { Field, Input, Select } from '@/components/ui/form';
 import { useAccess, useActor, useBooks, useBooksMutation, useToday } from '@/data/books';
 import { cn, formatDate } from '@/lib/utils';
 
-const KIND_META: Record<TransactionKind, { label: string; direction: 'in' | 'out' | 'move' }> = {
+/** direction "none": no money moves (an advance applied to an invoice). */
+const KIND_META: Record<TransactionKind, { label: string; direction: 'in' | 'out' | 'move' | 'none' }> = {
   income: { label: 'Income', direction: 'in' },
   expense: { label: 'Expense', direction: 'out' },
   payment_received: { label: 'Payment received', direction: 'in' },
   payment_made: { label: 'Payment made', direction: 'out' },
   refund_given: { label: 'Refund given', direction: 'out' },
   transfer: { label: 'Transfer', direction: 'move' },
+  advance_received: { label: 'Customer advance', direction: 'in' },
+  advance_applied: { label: 'Advance applied', direction: 'none' },
+  advance_refunded: { label: 'Advance refunded', direction: 'out' },
 };
 
 function KindIcon({ kind }: { kind: TransactionKind }) {
   const dir = KIND_META[kind].direction;
-  const Icon = dir === 'in' ? ArrowDownLeft : dir === 'out' ? (kind === 'refund_given' ? RotateCcw : ArrowUpRight) : ArrowLeftRight;
+  const Icon =
+    kind === 'advance_received'
+      ? HandCoins
+      : dir === 'in'
+        ? ArrowDownLeft
+        : dir === 'out'
+          ? kind === 'refund_given' || kind === 'advance_refunded'
+            ? RotateCcw
+            : ArrowUpRight
+          : dir === 'none'
+            ? Link2
+            : ArrowLeftRight;
   return (
     <span
       className={cn(
@@ -42,6 +60,7 @@ function KindIcon({ kind }: { kind: TransactionKind }) {
         dir === 'in' && 'bg-positive-soft text-positive',
         dir === 'out' && 'bg-negative-soft text-negative',
         dir === 'move' && 'bg-brand-soft text-brand',
+        dir === 'none' && 'bg-muted text-muted-foreground',
       )}
       aria-hidden="true"
     >
@@ -162,7 +181,7 @@ export function TransactionsScreen() {
   );
 }
 
-const ENTRY_KINDS = ['income', 'expense', 'refund_given', 'transfer'] as const;
+const ENTRY_KINDS = ['income', 'expense', 'advance_received', 'refund_given', 'transfer'] as const;
 
 const transactionSchema = z
   .object({
@@ -182,6 +201,8 @@ const transactionSchema = z
     if (v.kind === 'transfer') {
       if (!v.toAccountId) ctx.addIssue({ code: 'custom', path: ['toAccountId'], message: 'Choose where the money goes' });
       else if (v.toAccountId === v.accountId) ctx.addIssue({ code: 'custom', path: ['toAccountId'], message: 'Choose a different account' });
+    } else if (v.kind === 'advance_received') {
+      if (!v.contactId) ctx.addIssue({ code: 'custom', path: ['contactId'], message: 'Choose the customer who paid' });
     } else if (!v.categoryId) {
       ctx.addIssue({ code: 'custom', path: ['categoryId'], message: 'Choose a category' });
     }
@@ -270,17 +291,26 @@ export function AddTransactionScreen() {
       description: v.description,
       status: 'posted',
       paymentMethod: v.paymentMethod,
-      ...(v.kind === 'transfer' ? { toAccountId: v.toAccountId } : { ...(v.categoryId ? { categoryId: v.categoryId } : {}) }),
+      ...(v.kind === 'transfer'
+        ? { toAccountId: v.toAccountId }
+        : v.kind !== 'advance_received' && v.categoryId
+          ? { categoryId: v.categoryId }
+          : {}),
       ...(v.contactId && v.kind !== 'transfer' ? { contactId: v.contactId } : {}),
       ...(v.projectId && v.kind !== 'transfer' ? { projectId: v.projectId } : {}),
       ...(v.reference ? { reference: v.reference } : {}),
     };
-    const problems = validateTransaction(txn);
+    const problems = [...validateTransaction(txn), ...validateTransactionInBooks(txn, data, today)];
     if (problems.length) {
-      setError('root', { message: problems.join('. ') });
+      setError('root', { message: problems.join(' ') });
       return;
     }
-    await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+    try {
+      await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+    } catch (err) {
+      setError('root', { message: err instanceof Error ? err.message : 'Could not save' });
+      return;
+    }
     navigate('/app/transactions', { replace: true });
   });
 
@@ -290,7 +320,7 @@ export function AddTransactionScreen() {
       <form noValidate onSubmit={onSubmit} className="space-y-4 md:max-w-xl">
         <fieldset>
           <legend className="mb-2 text-sm font-medium">Type</legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {ENTRY_KINDS.map((k) => (
               <label
                 key={k}
@@ -306,6 +336,11 @@ export function AddTransactionScreen() {
           </div>
           {kind === 'transfer' && <p className="mt-2 text-xs text-muted-foreground">Transfers move money between your own accounts. They are not income or expenses.</p>}
           {kind === 'refund_given' && <p className="mt-2 text-xs text-muted-foreground">Refunds reduce your sales and are paid out of the chosen account.</p>}
+          {kind === 'advance_received' && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Money a customer pays before you invoice. It is held for the customer — not counted as sales — until you apply it to their invoice or refund it.
+            </p>
+          )}
         </fieldset>
 
         <div className="grid grid-cols-2 gap-3">
@@ -313,16 +348,16 @@ export function AddTransactionScreen() {
             {(p) => <Input {...p} inputMode="decimal" placeholder="0.00" autoComplete="off" {...register('amount')} />}
           </Field>
           <Field label="Date" error={e.date?.message}>
-            {(p) => <Input {...p} type="date" {...register('date')} />}
+            {(p) => <Input {...p} type="date" max={today} {...register('date')} />}
           </Field>
         </div>
 
         <Field label="Description" error={e.description?.message}>
-          {(p) => <Input {...p} placeholder={kind === 'expense' ? 'e.g. Shop rent for May' : 'e.g. Walk-in sale'} {...register('description')} />}
+          {(p) => <Input {...p} placeholder={kind === 'expense' ? 'e.g. Shop rent for May' : kind === 'advance_received' ? 'e.g. Booking advance for wedding' : 'e.g. Walk-in sale'} {...register('description')} />}
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={kind === 'transfer' ? 'From account' : kind === 'income' ? 'Received into' : 'Paid from'} error={e.accountId?.message}>
+          <Field label={kind === 'transfer' ? 'From account' : kind === 'income' || kind === 'advance_received' ? 'Received into' : 'Paid from'} error={e.accountId?.message}>
             {(p) => (
               <Select {...p} {...register('accountId')}>
                 {accounts.map((a) => (
@@ -363,6 +398,7 @@ export function AddTransactionScreen() {
 
         {kind !== 'transfer' && (
           <>
+            {kind !== 'advance_received' && (
             <Field label="Category" error={e.categoryId?.message}>
               {(p) => (
                 <Select {...p} {...register('categoryId')}>
@@ -377,8 +413,12 @@ export function AddTransactionScreen() {
                 </Select>
               )}
             </Field>
+            )}
             <div className="grid grid-cols-2 gap-3">
-              <Field label={kind === 'expense' ? 'Supplier (optional)' : 'Customer (optional)'}>
+              <Field
+                label={kind === 'expense' ? 'Supplier (optional)' : kind === 'advance_received' ? 'Customer' : 'Customer (optional)'}
+                error={e.contactId?.message}
+              >
                 {(p) => (
                   <Select {...p} {...register('contactId')}>
                     <option value="">None</option>
@@ -439,6 +479,7 @@ export function TransactionDetailScreen() {
   const mutation = useBooksMutation();
   const [reason, setReason] = useState('');
   const [voiding, setVoiding] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
   const txn = data.transactions.find((t) => t.id === id);
   if (!txn) {
     return (
@@ -454,12 +495,15 @@ export function TransactionDetailScreen() {
     ['Type', KIND_META[txn.kind].label],
     ['Date', formatDate(txn.date)],
     ['Amount', <Money key="a" amount={txn.amount} currency={txn.currency} />],
-    [txn.kind === 'transfer' ? 'From' : 'Account', name(data.accounts, txn.accountId) ?? '—'],
+    [txn.kind === 'transfer' ? 'From' : 'Account', txn.kind === 'advance_applied' ? 'No money moved' : (name(data.accounts, txn.accountId) ?? '—')],
     ...(txn.toAccountId ? [['To', name(data.accounts, txn.toAccountId) ?? '—'] as [string, string]] : []),
     ...(txn.contactId ? [['Contact', name(data.contacts, txn.contactId)] as [string, React.ReactNode]] : []),
     ...(txn.categoryId ? [['Category', name(data.categories, txn.categoryId)] as [string, React.ReactNode]] : []),
     ...(txn.projectId ? [['Project', name(data.projects, txn.projectId)] as [string, React.ReactNode]] : []),
     ...(doc ? [['Document', <Link key="d" className="text-primary" to={`/app/documents/${doc.id}`}>{doc.number ?? 'Draft'}</Link>] as [string, React.ReactNode]] : []),
+    ...(txn.advanceId
+      ? [['Advance', <Link key="adv" className="text-primary" to={`/app/transactions/${txn.advanceId}`}>View advance</Link>] as [string, React.ReactNode]]
+      : []),
     ...(txn.paymentMethod ? [['Method', PAYMENT_METHOD_LABELS[txn.paymentMethod]] as [string, string]] : []),
     ...(txn.reference ? [['Reference', txn.reference] as [string, string]] : []),
     ['Recorded', `${new Date(txn.createdAt).toLocaleString()}`],
@@ -488,6 +532,8 @@ export function TransactionDetailScreen() {
         </CardContent>
       </Card>
 
+      {txn.kind === 'advance_received' && <AdvancePanel advance={txn} />}
+
       {txn.status === 'posted' && access.canWrite && (
         <div className="mt-4">
           {voiding ? (
@@ -502,11 +548,23 @@ export function TransactionDetailScreen() {
                   <Button
                     variant="danger"
                     disabled={!reason.trim()}
-                    onClick={() => mutation.mutate({ type: 'transaction', transaction: voidTransaction(txn, reason, actor()) })}
+                    onClick={async () => {
+                      setVoidError(null);
+                      try {
+                        await mutation.mutateAsync({ type: 'transaction', transaction: voidTransaction(txn, reason, actor()) });
+                      } catch (err) {
+                        setVoidError(err instanceof Error ? err.message : 'Could not void');
+                      }
+                    }}
                   >
                     <Ban /> Void entry
                   </Button>
                 </div>
+                {voidError && (
+                  <p role="alert" className="text-sm text-negative">
+                    {voidError}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ) : (
@@ -518,5 +576,131 @@ export function TransactionDetailScreen() {
         </div>
       )}
     </>
+  );
+}
+
+/** Remaining balance of a customer advance, how it was used, and refunding the unused part. */
+function AdvancePanel({ advance }: { advance: Transaction }) {
+  const data = useBooks();
+  const today = useToday();
+  const access = useAccess();
+  const actor = useActor();
+  const mutation = useBooksMutation();
+  const remaining = advanceRemaining(advance, data.transactions);
+  const uses = data.transactions.filter((t) => t.advanceId === advance.id);
+  const accounts = data.accounts.filter((a) => !a.archived);
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(toDecimalString(remaining, advance.currency));
+  const [date, setDate] = useState(today);
+  const [accountId, setAccountId] = useState(advance.accountId ?? accounts[0]?.id ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Card className="mt-4">
+      <CardContent className="space-y-3 pt-4 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Unused advance (held for the customer)</span>
+          <Money amount={remaining} currency={advance.currency} className="text-base font-semibold" />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Not counted as sales. Apply it from the customer&apos;s invoice (Apply advance), or refund the unused part.
+        </p>
+        {uses.length > 0 && (
+          <ul className="divide-y rounded-lg border">
+            {uses.map((u) => (
+              <li key={u.id}>
+                <Link to={`/app/transactions/${u.id}`} className={cn('flex justify-between px-3 py-2', u.status === 'void' && 'line-through opacity-60')}>
+                  <span>
+                    {KIND_META[u.kind].label} · {formatDate(u.date)}
+                  </span>
+                  <Money amount={u.amount} currency={u.currency} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {advance.status === 'posted' && remaining > 0 && access.canWrite && !open && (
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <RotateCcw /> Refund unused advance
+          </Button>
+        )}
+        {open && (
+          <form
+            noValidate
+            className="space-y-3"
+            onSubmit={async (ev) => {
+              ev.preventDefault();
+              setError(null);
+              let minor: number;
+              try {
+                minor = parseAmount(amount, advance.currency);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Invalid amount');
+                return;
+              }
+              const { userId, now } = actor();
+              const refund: Transaction = {
+                id: newId('txn'),
+                organizationId: data.business.id,
+                createdAt: now,
+                createdBy: userId,
+                updatedAt: now,
+                updatedBy: userId,
+                origin: 'user',
+                kind: 'advance_refunded',
+                date,
+                amount: minor,
+                currency: advance.currency,
+                accountId,
+                advanceId: advance.id,
+                status: 'posted',
+                description: `Advance refunded — ${advance.description}`,
+                ...(advance.contactId ? { contactId: advance.contactId } : {}),
+                ...(advance.projectId ? { projectId: advance.projectId } : {}),
+              };
+              const problems = [...validateTransaction(refund), ...validateTransactionInBooks(refund, data, today)];
+              if (problems.length) {
+                setError(problems.join(' '));
+                return;
+              }
+              try {
+                await mutation.mutateAsync({ type: 'transaction', transaction: refund });
+                setOpen(false);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Could not save');
+              }
+            }}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Refund amount" error={error ?? undefined}>
+                {(p) => <Input {...p} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />}
+              </Field>
+              <Field label="Date">
+                {(p) => <Input {...p} type="date" min={advance.date} max={today} value={date} onChange={(e) => setDate(e.target.value)} />}
+              </Field>
+              <Field label="Paid from" className="col-span-2">
+                {(p) => (
+                  <Select {...p} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={mutation.isPending}>
+                Save refund
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
   );
 }

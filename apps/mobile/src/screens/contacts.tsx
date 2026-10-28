@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, MapPin, Pencil, Phone, Plus, Search, Users } from 'lucide-react';
-import { contactHistory, payables, receivables, type Contact, type ContactKind } from '@linqora-books/accounting-core';
+import { contactHistory, customerAdvances, payables, receivables, type Contact, type ContactKind } from '@linqora-books/accounting-core';
 import { newId } from '@linqora-books/shared';
 import { EmptyState, Money, PageHeader, ReadOnlyNotice, SampleBadge } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
@@ -116,6 +116,7 @@ export function ContactDetailScreen() {
   if (!contact) return <PageHeader title="Not found" back="/app/contacts" />;
   const owed = receivables(data, today).find((r) => r.contactId === contact.id);
   const owing = payables(data, today).find((r) => r.contactId === contact.id);
+  const advance = customerAdvances(data.transactions, today).find((a) => a.contactId === contact.id);
   const history = contactHistory(contact, data);
   const c = data.business.currency;
 
@@ -177,6 +178,15 @@ export function ContactDetailScreen() {
                 <Money amount={owing?.outstanding ?? 0} currency={c} />
               </p>
             </div>
+            {advance && (
+              <div className="col-span-2 rounded-lg bg-muted p-3">
+                <p className="text-muted-foreground">Advance held for this customer</p>
+                <p className="text-lg font-semibold">
+                  <Money amount={advance.held} currency={c} />
+                </p>
+                <p className="text-xs text-muted-foreground">Not sales yet — apply it from one of their invoices.</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
