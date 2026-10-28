@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { CalendarClock, Download, FlaskConical, Monitor, Moon, Sun, Trash2, Database, Users } from 'lucide-react';
+import { CalendarClock, Cloud, Download, FlaskConical, LogOut, Monitor, Moon, ShieldCheck, Sun, Trash2, Database, Upload, Users } from 'lucide-react';
 import { formatMoney, isCurrencyLocked } from '@linqora-books/accounting-core';
 import { evaluateAccess, isProductionAuthorized, priceFor } from '@linqora-books/billing';
 import { ROLE_LABELS, ORGANIZATION_ROLES } from '@linqora-books/shared';
@@ -8,10 +8,14 @@ import { PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { hasSampleData, useBooks, useBooksMutation, useToday } from '@/data/books';
+import { hasSampleData, useBooks, useBooksMutation, useEntitlement, useToday } from '@/data/books';
 import { useSubscription } from '@/state/subscription';
 import { usePreferences, type ThemePreference } from '@/state/preferences';
-import { useSession } from '@/state/session';
+import { signOut } from '@/auth/sign-out';
+import { useCurrentUser } from '@/auth/auth-store';
+import { DATA_MODE } from '@/config/env';
+
+const CLOUD = DATA_MODE === 'cloud';
 import { BusinessForm } from './business';
 import { cn, downloadText, formatDate } from '@/lib/utils';
 import { useBackHandler } from '@/navigation/use-back-handler';
@@ -22,7 +26,7 @@ export function SettingsScreen() {
   const navigate = useNavigate();
   const { theme, setTheme } = usePreferences();
   const resetSubscription = useSubscription((s) => s.reset);
-  const signOut = useSession((s) => s.signOut);
+  const user = useCurrentUser();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -47,7 +51,7 @@ export function SettingsScreen() {
               onSubmit={async (business) => {
                 setProfileError(null);
                 try {
-                  await mutation.mutateAsync({ type: 'business', business });
+                  await mutation.mutateAsync({ silent: true, type: 'business', business });
                   setSaved(true);
                   setTimeout(() => setSaved(false), 2500);
                 } catch (err) {
@@ -121,9 +125,40 @@ export function SettingsScreen() {
             <CardTitle>Your data</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
+            {CLOUD ? (
+              <>
+                <p className="flex items-start gap-2 text-muted-foreground">
+                  <Cloud className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  Your books are stored in your Linqora Books cloud account and are available on any device where you sign in.
+                </p>
+                <p className="text-muted-foreground">Signed in as {user?.email}.</p>
+                <div className="flex flex-wrap gap-2">
+                  <ButtonLink to="/app/import" variant="outline" size="sm">
+                    <Upload /> Import records from this device
+                  </ButtonLink>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadText(`linqora-books-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), 'application/json')}
+                  >
+                    <Download /> Export (JSON, browser only)
+                  </Button>
+                </div>
+                <div className="border-t pt-3">
+                  <Button variant="ghost" className="text-negative" onClick={() => void signOut().then(() => navigate('/welcome', { replace: true }))}>
+                    <LogOut /> Sign out
+                  </Button>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Deleting your account and business data is done on request in this version — see Help. Self-service deletion
+                    comes with the account settings in a later phase.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
             <p className="flex items-start gap-2 text-muted-foreground">
               <Database className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              Stored only on this device (prototype). There is no cloud backup yet — clearing app data or uninstalling deletes it.
+              Stored only on this device (local preview). There is no cloud backup — clearing app data or uninstalling deletes it.
             </p>
             <Button
               variant="outline"
@@ -141,7 +176,7 @@ export function SettingsScreen() {
                   onClick={async () => {
                     setError(null);
                     try {
-                      await mutation.mutateAsync({ type: 'removeSample' });
+                      await mutation.mutateAsync({ silent: true, type: 'removeSample' });
                     } catch (err) {
                       setError(err instanceof Error ? err.message : 'Could not remove sample data');
                     }
@@ -167,9 +202,13 @@ export function SettingsScreen() {
                     <Button
                       variant="danger"
                       onClick={async () => {
-                        await mutation.mutateAsync({ type: 'clear' });
+                        try {
+                          await mutation.mutateAsync({ type: 'clear' });
+                        } catch {
+                          return; // shown by the "Not saved" message; the form keeps what was typed
+                        }
                         resetSubscription();
-                        signOut();
+                        await signOut();
                         navigate('/welcome', { replace: true });
                       }}
                     >
@@ -179,11 +218,12 @@ export function SettingsScreen() {
                 </div>
               ) : (
                 <Button variant="ghost" className="text-negative" onClick={() => setConfirmReset(true)}>
-                  <Trash2 /> Reset local prototype
+                  <Trash2 /> Reset local preview
                 </Button>
               )}
-              <p className="mt-1 text-xs text-muted-foreground">Account deletion for cloud accounts will be available with Phase 2.</p>
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -201,7 +241,7 @@ const STATUS_TEXT: Record<string, string> = {
   complimentary: 'Complimentary access',
 };
 
-export function SubscriptionScreen() {
+function LocalSubscriptionScreen() {
   const today = useToday();
   const { entitlement, cancel, resume, simulateExpiry, reset } = useSubscription();
   const access = evaluateAccess(entitlement, today);
@@ -285,6 +325,61 @@ export function SubscriptionScreen() {
           <Button size="sm" variant="ghost" onClick={reset}>
             Reset test subscription
           </Button>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+export function SubscriptionScreen() {
+  return CLOUD ? <CloudAccessScreen /> : <LocalSubscriptionScreen />;
+}
+
+/**
+ * Cloud build: access is decided by the server. Billing is not connected in this
+ * phase, so nothing here can start a trial, take a payment or change access.
+ */
+function CloudAccessScreen() {
+  const today = useToday();
+  const { entitlement } = useEntitlement();
+  const access = evaluateAccess(entitlement, today);
+  const development = entitlement.source === 'development' || entitlement.environment === 'test';
+  const label = entitlement.status === 'none' ? 'Not activated' : development ? 'Development test access' : STATUS_TEXT[entitlement.status];
+
+  return (
+    <>
+      <PageHeader title="Subscription & access" />
+      <div className="mb-4 rounded-xl border-2 border-dashed border-warning bg-warning-soft p-4 text-sm text-warning">
+        <p className="flex items-center gap-2 font-semibold">
+          <FlaskConical className="size-4" aria-hidden="true" /> Billing is not available yet
+        </p>
+        <p className="mt-1">
+          This development build cannot start trials or take payments, and never asks for card or UPI details. Planned pricing:
+          one-month free trial, then {formatMoney(priceFor('monthly').amount, 'INR')}/month or {formatMoney(priceFor('yearly').amount, 'INR')}/year
+          (provisional).
+        </p>
+      </div>
+      <Card>
+        <CardContent className="space-y-3 pt-4 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Access</span>
+            <Badge tone={access.canWrite ? 'positive' : 'warning'}>{label}</Badge>
+          </div>
+          {entitlement.accessEndsAt && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Access until</span>
+              <span>{formatDate(entitlement.accessEndsAt)}</span>
+            </div>
+          )}
+          <p className="flex gap-2 rounded-lg bg-muted p-3 text-muted-foreground">
+            <ShieldCheck className="size-4 shrink-0" aria-hidden="true" />
+            {access.canWrite
+              ? development
+                ? 'Granted by Linqora for testing. It is not a paid subscription.'
+                : 'You can add and change records.'
+              : 'You can view and export your books. Adding or changing records needs access to be activated by Linqora during testing.'}
+          </p>
+          <p className="text-xs text-muted-foreground">Access is checked by the server on every change; it cannot be altered from this phone.</p>
         </CardContent>
       </Card>
     </>

@@ -1,0 +1,18 @@
+{
+  "name": "@linqora-books/cloud",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloud data access for Linqora Books: row mappers, gateway contract, cloud repository, local-data import planning",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@linqora-books/accounting-core": "workspace:*",
+    "@linqora-books/billing": "workspace:*"
+  }
+}

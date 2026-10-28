@@ -53,25 +53,54 @@ place. No package build step is needed.
 Phone: bottom tab bar (Home, Money, Invoices, Reports, More). Tablet/desktop (≥768px): sidebar with all
 sections. A TEST MODE strip is pinned at the top of every screen.
 
-## Organizations and multi-user (designed, Phase 2)
+## Data modes (build time)
 
-Every record carries `organizationId`, `createdBy/At`, `updatedBy/At` and `origin`. Roles
-(`owner`, `administrator`, `accountant`, `staff`, `viewer`) and their permissions are defined once in
-`packages/shared/src/roles.ts`. Enforcement is Postgres RLS (`supabase/migrations/…draft.sql`) plus
-Worker checks; the client table is only for hiding controls.
+| Mode | When | Auth | Data |
+|---|---|---|---|
+| `cloud` | `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` set | Supabase Auth (e-mail/password, verification, reset) | `CloudBooksRepository` → Supabase (RLS) |
+| `local-preview` | `VITE_ALLOW_LOCAL_PREVIEW=true` and no Supabase config | Local-only prototype sign-in, labelled | `LocalBooksRepository` (device) |
+| `unconfigured` | neither | none — "not configured" screen | none |
 
-Phase 1 limitation: one business and one test entitlement per device.
+Decided by `src/config/env.ts`; the two modes are never mixed in one build. The app refuses secret/service-role keys.
 
-## Offline and sync strategy
+## Cloud architecture (Phase 2)
 
-Phase 1 is local-only and says so on every screen. The cloud design prepares for offline use:
+```
+Screens -> data/books.ts (TanStack Query, per-user cache keys) -> BooksRepository
+                                                                   |- LocalBooksRepository (preview)
+                                                                   `- CloudBooksRepository (packages/cloud)
+                                                                         `- CloudGateway -> SupabaseGateway (supabase-js)
+Auth: auth/AuthController (restore session, refresh on resume, expiry -> sign-in, deep links)
+      auth/auth-service.ts (SupabaseAuthService, PKCE) - session tokens in Android Keystore / iOS Keychain
+Database (supabase/migrations): RLS on every table, composite (organization_id, id) keys and foreign keys,
+      triggers re-check the accounting rules, RPCs for multi-row operations, private storage buckets
+```
 
-- client-generated UUIDs for all records → a retried insert is the same row, not a duplicate;
-- `idempotency_key` on transactions (unique per organization);
-- `updatedAt` on every row → optimistic conflict detection (reject writes based on a stale version);
-- a future outbox in the repository: queued mutations with retry/backoff and a visible sync status.
+- **Organizations.** Each business is an `organizations` row; users join through `organization_members` with a role
+  (`owner`, `administrator`, `accountant`, `staff`, `viewer`). Phase 2 creates one business per user via
+  `create_organization()`; the schema already supports many businesses and staff (memberships change only via
+  server functions).
+- **Entities.** `business_settings`, `categories`, `contacts` (customers *and* suppliers, by `kind`), `money_accounts`,
+  `projects`, `documents` (quotations, invoices, bills), `transactions` (income, expenses, invoice/bill payments,
+  refunds, transfers, advances). One table per concept — no duplicate tables per document or payment type, so totals
+  cannot disagree. Plus `profiles`, `entitlements`, `app_settings`, `data_imports`, `audit_log`.
+- **Same rules everywhere.** `packages/accounting-core` validates in the app; database triggers enforce the same
+  rules (dates, balances, advances, void-only corrections, immutable numbers, currency lock). SQL money totals are
+  tested to match the TypeScript ones exactly.
+- **Atomic multi-row operations.** Quotation → invoice (`convert_quotation`), deleting a converted draft
+  (`delete_draft_document`) and the local import (`import_local_books`) each run in one database transaction.
+- **Idempotent writes.** Records use client-generated ids; each form keeps one id across retries; the repository treats
+  "already exists" on insert as success. A lost response therefore never creates a second invoice or payment.
+- **Freshness.** Cloud queries refresh on focus, reconnect, app resume and every 60 s, so a second device sees changes.
+  Realtime push is a later improvement.
 
-Offline sync is **not** promised until it is implemented and tested.
+## Offline behaviour (Phase 2: online-first)
+
+- Viewing works from the last loaded data; **saving needs a connection**. An offline banner says so.
+- A failed save shows "Not saved" with the reason, keeps the form and what was typed, and can be retried safely.
+- Nothing is queued offline, and no "saved" state is shown unless the server confirmed it.
+- Full offline entry with later synchronisation is **not** implemented (planned: outbox + conflict detection on
+  `updated_at`).
 
 ## Admin dashboard (Phase 5)
 
@@ -87,5 +116,7 @@ through explicit interfaces: the Worker API and the integrations contract (`pack
 
 - `packages/ui` is not created yet: UI components live in `apps/mobile/src/components/ui` until a second
   UI app (admin) needs them, to avoid premature workspace complexity.
+- Supabase code is split: `packages/cloud` (no SDK dependency, tested against the database) and
+  `apps/mobile/src/cloud` (supabase-js gateway, secure session storage).
 - `apps/web` and `apps/admin` are README placeholders; `apps/api` is a typed, tested skeleton without
   `wrangler` (added when it is first deployed).

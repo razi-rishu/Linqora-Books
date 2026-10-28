@@ -220,6 +220,8 @@ export function AddTransactionScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('txn'));
   const [params] = useSearchParams();
   const initialKind = (ENTRY_KINDS as readonly string[]).includes(params.get('kind') ?? '') ? (params.get('kind') as TransactionValues['kind']) : 'income';
   const currency = data.business.currency;
@@ -280,7 +282,7 @@ export function AddTransactionScreen() {
     }
     const { userId, now } = actor();
     const txn: Transaction = {
-      id: newId('txn'),
+      id: draftId,
       organizationId: data.business.id,
       createdAt: now,
       createdBy: userId,
@@ -310,7 +312,7 @@ export function AddTransactionScreen() {
       return;
     }
     try {
-      await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+      await mutation.mutateAsync({ silent: true, type: 'transaction', transaction: txn });
     } catch (err) {
       setError('root', { message: err instanceof Error ? err.message : 'Could not save' });
       return;
@@ -558,7 +560,7 @@ export function TransactionDetailScreen() {
                     onClick={async () => {
                       setVoidError(null);
                       try {
-                        await mutation.mutateAsync({ type: 'transaction', transaction: voidTransaction(txn, reason, actor()) });
+                        await mutation.mutateAsync({ silent: true, type: 'transaction', transaction: voidTransaction(txn, reason, actor()) });
                       } catch (err) {
                         setVoidError(err instanceof Error ? err.message : 'Could not void');
                       }
@@ -593,6 +595,8 @@ function AdvancePanel({ advance }: { advance: Transaction }) {
   const access = useAccess();
   const actor = useActor();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId, setDraftId] = useState(() => newId('txn'));
   const remaining = advanceRemaining(advance, data.transactions);
   const uses = data.transactions.filter((t) => t.advanceId === advance.id);
   const accounts = data.accounts.filter((a) => !a.archived);
@@ -648,7 +652,7 @@ function AdvancePanel({ advance }: { advance: Transaction }) {
               }
               const { userId, now } = actor();
               const refund: Transaction = {
-                id: newId('txn'),
+                id: draftId,
                 organizationId: data.business.id,
                 createdAt: now,
                 createdBy: userId,
@@ -672,7 +676,8 @@ function AdvancePanel({ advance }: { advance: Transaction }) {
                 return;
               }
               try {
-                await mutation.mutateAsync({ type: 'transaction', transaction: refund });
+                await mutation.mutateAsync({ silent: true, type: 'transaction', transaction: refund });
+                setDraftId(newId('txn')); // the next refund is a new record
                 setOpen(false);
               } catch (err) {
                 setError(err instanceof Error ? err.message : 'Could not save');

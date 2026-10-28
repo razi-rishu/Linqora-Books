@@ -245,6 +245,8 @@ export function ContactFormScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('con'));
   const existing = data.contacts.find((c) => c.id === id);
   const [params] = useSearchParams();
   const kindParam = params.get('kind');
@@ -282,7 +284,7 @@ export function ContactFormScreen() {
           const { userId, now } = actor();
           const optional = (k: 'phone' | 'email' | 'address' | 'taxId' | 'notes') => (v[k] ? { [k]: v[k] } : {});
           const contact: Contact = {
-            id: existing?.id ?? newId('con'),
+            id: existing?.id ?? draftId,
             organizationId: data.business.id,
             createdAt: existing?.createdAt ?? now,
             createdBy: existing?.createdBy ?? userId,
@@ -298,7 +300,11 @@ export function ContactFormScreen() {
             ...optional('taxId'),
             ...optional('notes'),
           };
-          await mutation.mutateAsync({ type: 'contact', contact });
+          try {
+            await mutation.mutateAsync({ type: 'contact', contact });
+          } catch {
+            return; // shown by the "Not saved" message; the form keeps what was typed
+          }
           guard.allowNavigation();
           navigate(`/app/contacts/${contact.id}`, { replace: true });
         })}

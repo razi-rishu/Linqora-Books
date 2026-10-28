@@ -11,17 +11,22 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "android:sync": "vite build && cap sync android",
-    "android:debug": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
+    "android:debug": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug",
+    "build:preview": "vite build --mode preview-local",
+    "android:debug:preview": "vite build --mode preview-local && cap sync android && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "8.0.1",
     "@capacitor/android": "8.5.3",
     "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.5.3",
     "@hookform/resolvers": "6.0.0",
     "@linqora-books/accounting-core": "workspace:*",
     "@linqora-books/billing": "workspace:*",
+    "@linqora-books/cloud": "workspace:*",
     "@linqora-books/integrations": "workspace:*",
     "@linqora-books/shared": "workspace:*",
+    "@supabase/supabase-js": "2.118.0",
     "@tanstack/react-query": "5.105.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

@@ -1,8 +1,8 @@
 {
   "name": "linqora-books",
   "private": true,
-  "version": "0.1.0",
-  "description": "Linqora Books — small-business accounting and profit/loss tracking (Phase 1 prototype)",
+  "version": "0.2.0",
+  "description": "Linqora Books \u2014 small-business accounting and profit/loss tracking",
   "type": "module",
   "packageManager": "pnpm@12.15.0",
   "engines": {
@@ -17,7 +17,9 @@
     "e2e": "pnpm --filter @linqora-books/mobile e2e",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "android:sync": "pnpm --filter @linqora-books/mobile android:sync",
-    "android:debug": "pnpm --filter @linqora-books/mobile android:debug"
+    "android:debug": "pnpm --filter @linqora-books/mobile android:debug",
+    "android:debug:preview": "pnpm --filter @linqora-books/mobile android:debug:preview",
+    "test:db": "pnpm --filter @linqora-books/supabase test"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

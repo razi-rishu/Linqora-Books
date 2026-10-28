@@ -184,6 +184,8 @@ export function DocumentEditorScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('doc'));
   const existing = data.documents.find((d) => d.id === id);
   const type = existing?.type ?? parseType(params.get('type'));
   const currency = data.business.currency;
@@ -268,7 +270,7 @@ export function DocumentEditorScreen() {
     }
     const { userId, now } = actor();
     const doc: BusinessDocument = {
-      id: existing?.id ?? newId('doc'),
+      id: existing?.id ?? draftId,
       organizationId: data.business.id,
       createdAt: existing?.createdAt ?? now,
       createdBy: existing?.createdBy ?? userId,
@@ -293,7 +295,11 @@ export function DocumentEditorScreen() {
           ? { number: nextDocumentNumber('quotation', data.documents, v.issueDate, data.business.financialYearStartMonth) }
           : {}),
     };
-    await mutation.mutateAsync({ type: 'documents', documents: [doc] });
+    try {
+      await mutation.mutateAsync({ type: 'documents', documents: [doc] });
+    } catch {
+      return; // shown by the "Not saved" message; the form keeps what was typed
+    }
     guard.allowNavigation();
     navigate(`/app/documents/${doc.id}`, { replace: true });
   });
@@ -432,6 +438,8 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
   const today = useToday();
   const actor = useActor();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('txn'));
   const balance = documentBalance(doc, data.transactions);
   const accounts = data.accounts.filter((a) => !a.archived);
   const [amount, setAmount] = useState(toDecimalString(balance, doc.currency));
@@ -467,7 +475,7 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
         const { userId, now } = actor();
         const contact = data.contacts.find((c) => c.id === doc.contactId);
         const txn: Transaction = {
-          id: newId('txn'),
+          id: draftId,
           organizationId: data.business.id,
           createdAt: now,
           createdBy: userId,
@@ -489,7 +497,7 @@ function PaymentForm({ doc, onDone }: { doc: BusinessDocument; onDone: () => voi
         const problems = validateTransactionInBooks(txn, data, today);
         if (problems.length) return setError(problems.join(' '));
         try {
-          await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+          await mutation.mutateAsync({ silent: true, type: 'transaction', transaction: txn });
         } catch (err) {
           return setError(err instanceof Error ? err.message : 'Could not save');
         }
@@ -544,6 +552,8 @@ function ApplyAdvanceForm({ doc, onDone }: { doc: BusinessDocument; onDone: () =
   const today = useToday();
   const actor = useActor();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('txn'));
   const balance = documentBalance(doc, data.transactions);
   const held = customerAdvances(data.transactions, today).find((a) => a.contactId === doc.contactId)?.advances ?? [];
   const [advanceId, setAdvanceId] = useState(held[0]?.advance.id ?? '');
@@ -571,7 +581,7 @@ function ApplyAdvanceForm({ doc, onDone }: { doc: BusinessDocument; onDone: () =
         if (!isISODate(date)) return setError('Enter a valid date');
         const { userId, now } = actor();
         const txn: Transaction = {
-          id: newId('txn'),
+          id: draftId,
           organizationId: data.business.id,
           createdAt: now,
           createdBy: userId,
@@ -592,7 +602,7 @@ function ApplyAdvanceForm({ doc, onDone }: { doc: BusinessDocument; onDone: () =
         const problems = [...validateTransaction(txn), ...validateTransactionInBooks(txn, data, today)];
         if (problems.length) return setError(problems.join(' '));
         try {
-          await mutation.mutateAsync({ type: 'transaction', transaction: txn });
+          await mutation.mutateAsync({ silent: true, type: 'transaction', transaction: txn });
         } catch (err) {
           return setError(err instanceof Error ? err.message : 'Could not save');
         }
@@ -649,6 +659,8 @@ export function DocumentDetailScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('doc'));
   const [panel, setPanel] = useState<'none' | 'payment' | 'advance' | 'void'>('none');
   useBackHandler(panel !== 'none', () => setPanel('none'));
   const [reason, setReason] = useState('');
@@ -671,7 +683,7 @@ export function DocumentDetailScreen() {
     setError(null);
     try {
       const docs = await fn();
-      await mutation.mutateAsync({ type: 'documents', documents: docs });
+      await mutation.mutateAsync({ silent: true, type: 'documents', documents: docs });
       after?.(docs);
     } catch (err) {
       setError(err instanceof WorkflowError || err instanceof Error ? err.message : 'Action failed');
@@ -741,7 +753,7 @@ export function DocumentDetailScreen() {
               onClick={() =>
                 run(
                   () => {
-                    const { quotation, invoice } = convertQuotationToInvoice(doc, newId('doc'), actor(), today);
+                    const { quotation, invoice } = convertQuotationToInvoice(doc, draftId, actor(), today);
                     return [quotation, invoice];
                   },
                   (docs) => navigate(`/app/documents/${docs[1]!.id}`),
@@ -779,7 +791,11 @@ export function DocumentDetailScreen() {
               size="sm"
               variant="ghost"
               onClick={async () => {
-                await mutation.mutateAsync({ type: 'deleteDraft', id: doc.id, actor: actor() });
+                try {
+                  await mutation.mutateAsync({ type: 'deleteDraft', id: doc.id, actor: actor() });
+                } catch {
+                  return; // shown by the "Not saved" message; the form keeps what was typed
+                }
                 navigate(`/app/documents?type=${doc.type}`, { replace: true });
               }}
             >

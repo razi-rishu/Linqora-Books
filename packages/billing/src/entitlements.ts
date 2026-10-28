@@ -10,6 +10,8 @@ export type BillingEnvironment = 'test' | 'production';
 
 export type EntitlementSource =
   | 'test_mode'
+  /** Server-granted development/test access (cloud). Never a paid subscription. */
+  | 'development'
   | 'google_play'
   | 'app_store'
   | 'revenuecat'

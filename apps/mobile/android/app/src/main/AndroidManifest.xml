@@ -22,6 +22,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Supabase Auth e-mail links (verification, password reset) return here:
+                 com.linqora.books://auth/callback?code=…  (PKCE: only this install can use the code) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.linqora.books" android:host="auth" android:path="/callback" />
+            </intent-filter>
 
         </activity>
 

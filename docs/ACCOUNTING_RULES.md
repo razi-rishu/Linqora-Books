@@ -124,6 +124,15 @@ Checked by `validateTransactionInBooks` (and enforced again by the repository on
 
 Configurable start month (April default for India). Reports offer this/last month and this/last financial year.
 
+## Enforcement in the cloud database
+
+Every rule above is checked twice: in the app (`packages/accounting-core`) for immediate feedback, and by database
+triggers (`supabase/migrations/20261028090100_accounting_rules.sql`) so no client can bypass them: shape rules (CHECK
+constraints), D1–D3 dates using the server clock and business time zone, payment ≤ balance and advance ≤ remaining
+(with row locks against simultaneous payments), void-only updates, immutable numbers and conversion links,
+drafts-only deletion, currency lock, and SQL money totals identical to `documentTotals()` (tested on 300 random
+documents).
+
 ## Scope disclaimer
 
 Linqora Books is a small-business finance tracker. It does not yet implement GST returns, e-invoicing

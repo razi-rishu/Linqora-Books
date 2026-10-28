@@ -3,7 +3,10 @@ import { ArrowLeftRight, ChartColumn, Ellipsis, FileText, House } from 'lucide-r
 import { BrandMark, SampleDataBanner, TestModeBanner } from './common';
 import { secondaryNav, type NavItem } from './nav';
 import { hasSampleData, useBooksQuery } from '@/data/books';
-import { useSession } from '@/state/session';
+import { useAuth, useAuthReady, useCurrentUser } from '@/auth/auth-store';
+import { DATA_MODE } from '@/config/env';
+import { LoadError, LocalImportBanner, NetworkBanner, SaveErrorToast } from './status';
+import { describeSaveError } from '@/data/books';
 import { cn } from '@/lib/utils';
 
 const PRIMARY: NavItem[] = [
@@ -33,12 +36,25 @@ function SideLink({ item }: { item: NavItem }) {
 }
 
 export function AppShell() {
-  const user = useSession((s) => s.user);
-  const { data, isLoading, isFetching } = useBooksQuery();
+  const ready = useAuthReady();
+  const user = useCurrentUser();
+  const authNotice = useAuth((s) => s.notice);
+  const { data, isLoading, isFetching, error, refetch } = useBooksQuery();
   const location = useLocation();
 
-  if (!user) return <Navigate to="/welcome" replace />;
+  if (DATA_MODE === 'unconfigured') return <Navigate to="/not-configured" replace />;
+  if (!ready) return null;
+  // Signed out by an expired session: go where the explanation is shown.
+  if (!user) return <Navigate to={authNotice ? '/sign-in' : '/welcome'} replace />;
   if (isLoading || (!data && isFetching)) return null;
+  if (error && !data) {
+    return (
+      <>
+        <NetworkBanner />
+        <LoadError message={describeSaveError(error)} onRetry={() => void refetch()} />
+      </>
+    );
+  }
   if (!data) return <Navigate to="/setup" replace />;
 
   const secondary = secondaryNav(data.business.modules.projects);
@@ -48,7 +64,9 @@ export function AppShell() {
     <div className="flex min-h-dvh flex-col">
       <div className="pt-safe no-print sticky top-0 z-30 bg-warning-soft">
         <TestModeBanner />
+        <NetworkBanner />
       </div>
+      <SaveErrorToast />
       <div className="flex flex-1">
         <aside className="no-print sticky top-8 hidden h-[calc(100dvh-2rem)] w-64 shrink-0 flex-col gap-1 overflow-y-auto border-r bg-card p-4 md:flex">
           <div className="mb-4 px-2">
@@ -66,6 +84,7 @@ export function AppShell() {
         <main className="min-w-0 flex-1 px-4 pt-4 pb-28 md:px-8 md:pt-6 md:pb-10">
           <div className="mx-auto max-w-5xl">
             {hasSampleData(data) && location.pathname === '/app' && <SampleDataBanner />}
+            {location.pathname === '/app' && <LocalImportBanner />}
             <Outlet />
           </div>
         </main>

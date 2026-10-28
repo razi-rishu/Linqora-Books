@@ -19,7 +19,9 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/form';
 import { useBooksMutation } from '@/data/books';
 import { buildSampleData } from '@/data/sample-data';
-import { useSession } from '@/state/session';
+import { useCurrentUser } from '@/auth/auth-store';
+import { DATA_MODE } from '@/config/env';
+import { describeSaveError } from '@/data/books';
 import { cn, nowISO } from '@/lib/utils';
 import { useUnsavedChangesGuard } from '@/navigation/use-unsaved-changes';
 import { UnsavedChangesDialog } from '@/navigation/unsaved-changes';
@@ -224,9 +226,12 @@ export function BusinessForm({
 
 export function BusinessSetupScreen() {
   const navigate = useNavigate();
-  const user = useSession((s) => s.user);
+  const user = useCurrentUser();
   const mutation = useBooksMutation();
   const [start, setStart] = useState<'empty' | 'sample'>('empty');
+  const [error, setError] = useState<string | null>(null);
+  // Sample data exists only in the local preview; it is never uploaded to the cloud.
+  const offerSample = DATA_MODE !== 'cloud';
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -240,6 +245,13 @@ export function BusinessSetupScreen() {
         <BusinessForm
           submitLabel="Finish setup"
           extra={
+            <>
+            {error && (
+              <p role="alert" className="rounded-xl bg-negative-soft p-3 text-sm text-negative">
+                {error}
+              </p>
+            )}
+            {offerSample && (
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">How would you like to start?</legend>
               {(
@@ -266,6 +278,8 @@ export function BusinessSetupScreen() {
                 </label>
               ))}
             </fieldset>
+            )}
+            </>
           }
           onSubmit={async (business) => {
             const userId = user?.id ?? 'unknown';
@@ -273,7 +287,13 @@ export function BusinessSetupScreen() {
               start === 'sample'
                 ? buildSampleData(business, userId, todayInTimeZone(business.timeZone), nowISO())
                 : { categories: defaultCategories(business.category) };
-            await mutation.mutateAsync({ type: 'business', business, seed });
+            setError(null);
+            try {
+              await mutation.mutateAsync({ silent: true, type: 'business', business, seed });
+            } catch (e) {
+              setError(`Your business was not created. ${describeSaveError(e)}`);
+              return false;
+            }
             navigate('/app', { replace: true });
           }}
         />

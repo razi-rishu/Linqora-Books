@@ -70,7 +70,7 @@ export class TestDb {
       try {
         await pg.exec(readFileSync(join(MIGRATIONS, file), 'utf8'));
       } catch (e) {
-        throw new Error(`Migration ${file} failed: ${(e as Error).message}`);
+        throw new Error(`Migration ${file} failed: ${(e as Error).message}`, { cause: e });
       }
     }
     return new TestDb(pg);
@@ -118,7 +118,7 @@ export async function rejects(p: Promise<unknown>, pattern: RegExp): Promise<voi
     await p;
   } catch (e) {
     const message = (e as Error).message;
-    if (!pattern.test(message)) throw new Error(`Expected error matching ${pattern}, got: ${message}`);
+    if (!pattern.test(message)) throw new Error(`Expected error matching ${pattern}, got: ${message}`, { cause: e });
     return;
   }
   throw new Error(`Expected rejection matching ${pattern}, but it succeeded`);

@@ -21,5 +21,7 @@ export default defineConfig({
     css: false,
     // UI tests drive the full app; under machine load a few take >5 s.
     testTimeout: 20_000,
+    // UI tests run the explicit local-preview build unless a test mocks cloud mode.
+    env: { VITE_ALLOW_LOCAL_PREVIEW: 'true' },
   },
 });

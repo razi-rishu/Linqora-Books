@@ -10,6 +10,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.10",
-    "@linqora-books/accounting-core": "workspace:*"
+    "@linqora-books/accounting-core": "workspace:*",
+    "@linqora-books/billing": "workspace:*",
+    "@linqora-books/cloud": "workspace:*"
   }
 }

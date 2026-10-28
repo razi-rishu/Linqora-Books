@@ -7,6 +7,7 @@ import { Badge } from './ui/badge';
 import { ButtonLink } from './ui/button';
 import { cn } from '@/lib/utils';
 import { useAccess } from '@/data/books';
+import { DATA_MODE } from '@/config/env';
 
 export function BrandMark({ className, withName = true }: { className?: string; withName?: boolean }) {
   return (
@@ -120,13 +121,20 @@ export function SampleBadge({ origin }: { origin: string }) {
 }
 
 /** Persistent strip: this build is a local prototype with no real billing or cloud sync. */
+/** Persistent strip saying which kind of build this is. No build takes payments in Phase 2. */
 export function TestModeBanner() {
   return (
     <div role="status" className="flex items-center justify-center gap-2 bg-warning-soft px-3 py-1.5 text-center text-xs font-medium text-warning">
       <FlaskConical className="size-3.5 shrink-0" aria-hidden="true" />
-      <span>
-        <strong>TEST MODE</strong> · Local prototype · No real payments · Data stays on this device
-      </span>
+      {DATA_MODE === 'cloud' ? (
+        <span>
+          <strong>DEVELOPMENT BUILD</strong> · Cloud accounts · Billing disabled — no payments are taken
+        </span>
+      ) : (
+        <span>
+          <strong>TEST MODE</strong> · Local preview · No real payments · Data stays on this device
+        </span>
+      )}
     </div>
   );
 }

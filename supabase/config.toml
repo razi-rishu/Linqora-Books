@@ -1,0 +1,32 @@
+# Supabase CLI configuration for the DEDICATED Linqora Books project.
+# Link with:  npx supabase link --project-ref <linqora-books-project-ref>
+# Never link this folder to the Linqora QR project.
+project_id = "linqora-books"
+
+[api]
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 5000
+
+[auth]
+# The app is a native app; e-mail links return through its deep link.
+site_url = "com.linqora.books://auth/callback"
+additional_redirect_urls = [
+  "com.linqora.books://auth/callback",
+  "com.linqora.books://auth/callback?type=signup",
+  "com.linqora.books://auth/callback?type=recovery",
+  "http://localhost:5180/",
+]
+enable_signup = true
+minimum_password_length = 8
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+double_confirm_changes = true
+secure_password_change = true
+
+[storage]
+file_size_limit = "20MiB"

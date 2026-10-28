@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -276,6 +277,8 @@ export function ProjectFormScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('prj'));
   const existing = data.projects.find((p) => p.id === id);
   const c = data.business.currency;
   const { register, handleSubmit, formState, setError } = useForm({
@@ -321,7 +324,7 @@ export function ProjectFormScreen() {
           }
           const { userId, now } = actor();
           const project: Project = {
-            id: existing?.id ?? newId('prj'),
+            id: existing?.id ?? draftId,
             organizationId: data.business.id,
             createdAt: existing?.createdAt ?? now,
             createdBy: existing?.createdBy ?? userId,
@@ -337,7 +340,11 @@ export function ProjectFormScreen() {
             ...(v.endDate ? { endDate: v.endDate } : {}),
             ...(v.notes.trim() ? { notes: v.notes.trim() } : {}),
           };
-          await mutation.mutateAsync({ type: 'project', project });
+          try {
+            await mutation.mutateAsync({ type: 'project', project });
+          } catch {
+            return; // shown by the "Not saved" message; the form keeps what was typed
+          }
           guard.allowNavigation();
           navigate(`/app/projects/${project.id}`, { replace: true });
         })}

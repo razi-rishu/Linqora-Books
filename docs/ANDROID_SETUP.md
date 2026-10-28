@@ -6,7 +6,7 @@
 |---|---|---|
 | applicationId / namespace | `com.linqora.books` | `com.linqora.app` |
 | App name | Linqora Books | Linqora |
-| Version | versionCode 3, versionName 0.1.2 | separate |
+| Version | versionCode 4, versionName 0.2.0 | separate |
 | Signing key | **to be created** for Books (Phase 7) | `~/.linqora-signing/linqora-release.jks` — never reuse |
 
 Changing `applicationId` after users install the app forces a reinstall, so treat `com.linqora.books` as
@@ -84,6 +84,28 @@ Updating: install a newer `app-debug.apk` the same way; it replaces the old one 
 A build from another computer has a different debug key — uninstall first, which deletes the local data on the phone.
 (The app's backup export does not work inside Android yet — Phase 4 — so treat phone data as test data.)
 
+## Cloud vs local-preview APK
+
+| Command | Build |
+|---|---|
+| `pnpm android:debug` | **Cloud**: needs `apps/mobile/.env.production.local` with the Supabase URL + publishable key (SUPABASE_SETUP.md) |
+| `pnpm android:debug:preview` | **Local preview**: on-device records, local-only sign-in, labelled TEST MODE |
+
+Without the cloud settings, `pnpm android:debug` produces an app that only shows "not configured".
+
+## Sign-in links (deep link)
+
+Verification and password-reset e-mails open `com.linqora.books://auth/callback?...`, registered in
+`AndroidManifest.xml` (VIEW + BROWSABLE). Open the e-mail **on the same phone** that signed up / requested the reset
+(PKCE). Opened elsewhere, the address is still verified — the app then asks the user to sign in. Verified HTTPS App
+Links need a Linqora Books domain with `assetlinks.json` (later phase).
+
+## Session storage
+
+Sessions are kept by `@aparajita/capacitor-secure-storage` (encrypted with an Android Keystore key), refreshed only
+while the app is in the foreground, and survive restarts. Plugins in the APK: `@capacitor/app`,
+`@aparajita/capacitor-secure-storage`. Permissions: `INTERNET` only (plus AndroidX's internal receiver permission).
+
 ## Back button
 
 Hardware/system Back is handled by `@capacitor/app` + React Router (`src/navigation/`). One native listener is
@@ -111,8 +133,8 @@ device transfer). Consequences while data is local-only:
   works in the browser version only; on Android, file export arrives in Phase 4. Treat phone data as test data until then.
 - Samsung Smart Switch and Google's phone-to-phone copy will not carry Linqora Books data.
 
-Revisit in Phase 2: once records live in Supabase, keep auth tokens and caches excluded; nothing needs restoring
-from Android backup.
+Cloud builds: books live in Supabase, so reinstalling or changing phones only needs a sign-in. Session tokens stay
+excluded from backup by design (a restored token on another phone would be a security risk).
 
 ## Release builds (Phase 7 — not done)
 

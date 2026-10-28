@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ChevronRight, Globe, LogOut, Plug, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '@/components/common';
 import { Badge } from '@/components/ui/badge';
@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { secondaryNav } from '@/components/nav';
 import { useBooks } from '@/data/books';
-import { useSession } from '@/state/session';
+import { useCurrentUser } from '@/auth/auth-store';
+import { signOut } from '@/auth/sign-out';
 import { APP_VERSION } from '@/config/env';
 
 export function MoreScreen() {
   const data = useBooks();
-  const user = useSession((s) => s.user);
-  const signOut = useSession((s) => s.signOut);
+  const user = useCurrentUser();
+  const navigate = useNavigate();
   return (
     <>
       <PageHeader title="More" subtitle={user ? `${user.name} · ${user.email}` : undefined} />
@@ -32,7 +33,7 @@ export function MoreScreen() {
           ))}
         </ul>
       </Card>
-      <Button variant="ghost" className="mt-4 text-negative" onClick={signOut}>
+      <Button variant="ghost" className="mt-4 text-negative" onClick={() => void signOut().then(() => navigate('/welcome', { replace: true }))}>
         <LogOut /> Sign out
       </Button>
       <p className="mt-4 text-xs text-muted-foreground">Linqora Books {APP_VERSION} · Phase 1 prototype</p>

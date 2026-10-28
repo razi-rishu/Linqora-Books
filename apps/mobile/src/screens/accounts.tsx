@@ -42,7 +42,7 @@ function Reconcile({ account, balance }: { account: MoneyAccount; balance: numbe
         try {
           const statement = parseAmount(value, account.currency, { allowNegative: true });
           const { userId, now } = actor();
-          await mutation.mutateAsync({
+          await mutation.mutateAsync({ silent: true,
             type: 'account',
             account: { ...account, reconciledBalance: statement, reconciledAt: today, updatedAt: now, updatedBy: userId },
           });
@@ -161,6 +161,8 @@ export function AccountFormScreen() {
   const actor = useActor();
   const navigate = useNavigate();
   const mutation = useBooksMutation();
+  // One id per form: a retry after a lost response re-sends the same record instead of creating a second one.
+  const [draftId] = useState(() => newId('acc'));
   const c = data.business.currency;
   const { register, handleSubmit, formState, setError } = useForm({
     resolver: zodResolver(accountSchema),
@@ -196,24 +198,28 @@ export function AccountFormScreen() {
             return;
           }
           const { userId, now } = actor();
-          await mutation.mutateAsync({
-            type: 'account',
-            account: {
-              id: newId('acc'),
-              organizationId: data.business.id,
-              createdAt: now,
-              createdBy: userId,
-              updatedAt: now,
-              updatedBy: userId,
-              origin: 'user',
-              name: v.name,
-              kind: v.kind,
-              currency: c,
-              openingBalance: opening,
-              openingDate: v.openingDate,
-              archived: false,
-            },
-          });
+          try {
+            await mutation.mutateAsync({
+              type: 'account',
+              account: {
+                id: draftId,
+                organizationId: data.business.id,
+                createdAt: now,
+                createdBy: userId,
+                updatedAt: now,
+                updatedBy: userId,
+                origin: 'user',
+                name: v.name,
+                kind: v.kind,
+                currency: c,
+                openingBalance: opening,
+                openingDate: v.openingDate,
+                archived: false,
+              },
+            });
+          } catch {
+            return; // shown by the "Not saved" message; the form keeps what was typed
+          }
           guard.allowNavigation();
           navigate('/app/accounts', { replace: true });
         })}
