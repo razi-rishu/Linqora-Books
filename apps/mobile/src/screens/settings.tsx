@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { CalendarClock, Download, FlaskConical, Monitor, Moon, Sun, Trash2, Database, Users } from 'lucide-react';
-import { formatMoney } from '@linqora-books/accounting-core';
+import { formatMoney, isCurrencyLocked } from '@linqora-books/accounting-core';
 import { evaluateAccess, isProductionAuthorized, priceFor } from '@linqora-books/billing';
 import { ROLE_LABELS, ORGANIZATION_ROLES } from '@linqora-books/shared';
 import { PageHeader } from '@/components/common';
@@ -24,9 +24,10 @@ export function SettingsScreen() {
   const signOut = useSession((s) => s.signOut);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const sample = hasSampleData(data);
-  const hasRecords = data.transactions.length + data.documents.length > 0;
+  const currencyLocked = isCurrencyLocked(data);
 
   return (
     <>
@@ -39,17 +40,27 @@ export function SettingsScreen() {
           <CardContent>
             <BusinessForm
               existing={data.business}
-              currencyLocked={hasRecords}
+              currencyLocked={currencyLocked}
               submitLabel="Save changes"
               onSubmit={async (business) => {
-                await mutation.mutateAsync({ type: 'business', business });
-                setSaved(true);
-                setTimeout(() => setSaved(false), 2500);
+                setProfileError(null);
+                try {
+                  await mutation.mutateAsync({ type: 'business', business });
+                  setSaved(true);
+                  setTimeout(() => setSaved(false), 2500);
+                } catch (err) {
+                  setProfileError(err instanceof Error ? err.message : 'Could not save');
+                }
               }}
             />
             {saved && (
               <p role="status" className="mt-2 text-sm text-positive">
                 Saved.
+              </p>
+            )}
+            {profileError && (
+              <p role="alert" className="mt-2 text-sm text-negative">
+                {profileError}
               </p>
             )}
           </CardContent>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { todayInTimeZone, type BusinessProfile } from '@linqora-books/accounting-core';
+import { todayInTimeZone, type BooksData, type BusinessProfile } from '@linqora-books/accounting-core';
 import { App } from './App';
 import { LocalBooksRepository } from './data/local-repository';
 import { buildSampleData } from './data/sample-data';
@@ -21,10 +21,10 @@ const business: BusinessProfile = {
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 
-async function setup(path: string, { sample = true, trial = true } = {}) {
+async function setup(path: string, { sample = true, trial = true, seed }: { sample?: boolean; trial?: boolean; seed?: Partial<BooksData> } = {}) {
   const repo = new LocalBooksRepository(localStorage);
   const today = todayInTimeZone(business.timeZone);
-  await repo.saveBusiness(business, sample ? buildSampleData(business, 'user_1', today, new Date().toISOString()) : {});
+  await repo.saveBusiness(business, seed ?? (sample ? buildSampleData(business, 'user_1', today, new Date().toISOString()) : {}));
   const user = { id: 'user_1', email: 'a@example.test', name: 'A' };
   useSession.setState({ user, knownUsers: [user] });
   useSubscription.setState({
@@ -91,6 +91,18 @@ describe('app', () => {
     await setup('#/app/documents?type=invoice');
     expect(await screen.findByText('Overdue')).toBeInTheDocument();
     expect(screen.getAllByText('Sample').length).toBeGreaterThan(0);
+  });
+
+  it('lets the currency change only while no accounts or records exist', async () => {
+    await setup('#/app/settings', { sample: false });
+    expect(await screen.findByLabelText('Currency')).toBeEnabled();
+  });
+
+  it('locks the currency in Settings once an account exists, even with no records', async () => {
+    const account = buildSampleData(business, 'user_1', '2026-10-28', '2026-10-28T00:00:00Z').accounts[0]!;
+    await setup('#/app/settings', { seed: { accounts: [{ ...account, origin: 'user' }] } });
+    expect(await screen.findByLabelText('Currency')).toBeDisabled();
+    expect(screen.getByText('Locked once records exist')).toBeInTheDocument();
   });
 
   it('lists projects with realised profit', async () => {

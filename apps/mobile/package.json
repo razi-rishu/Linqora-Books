@@ -11,7 +11,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "android:sync": "vite build && cap sync android",
-    "android:debug": "vite build && cap sync android && cd android && gradlew.bat assembleDebug"
+    "android:debug": "vite build && cap sync android && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

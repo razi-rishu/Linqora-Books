@@ -652,7 +652,7 @@ export function DocumentDetailScreen() {
               size="sm"
               variant="ghost"
               onClick={async () => {
-                await mutation.mutateAsync({ type: 'deleteDraft', id: doc.id });
+                await mutation.mutateAsync({ type: 'deleteDraft', id: doc.id, actor: actor() });
                 navigate(`/app/documents?type=${doc.type}`, { replace: true });
               }}
             >

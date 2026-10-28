@@ -107,6 +107,21 @@ export function convertQuotationToInvoice(
   };
 }
 
+/**
+ * Undoes a conversion when the draft invoice it produced is deleted, so the
+ * quotation is not left pointing at a missing invoice and can be converted again.
+ */
+export function releaseConvertedQuotation(quotation: BusinessDocument, deletedInvoice: BusinessDocument, actor: Actor): BusinessDocument {
+  if (quotation.type !== 'quotation' || quotation.status !== 'converted') {
+    throw new WorkflowError('Only converted quotations can be released');
+  }
+  if (quotation.convertedToId !== deletedInvoice.id) throw new WorkflowError('Quotation was converted to a different invoice');
+  if (deletedInvoice.status !== 'draft') throw new WorkflowError('Only a draft invoice can be removed from a conversion');
+  const { convertedToId: _released, ...rest } = quotation;
+  void _released;
+  return { ...rest, status: 'accepted', updatedAt: actor.now, updatedBy: actor.userId };
+}
+
 /** Finalises a draft invoice or bill and assigns its permanent number. */
 export function issueDocument(doc: BusinessDocument, number: string, actor: Actor): BusinessDocument {
   if (doc.type === 'quotation') throw new WorkflowError('Quotations are not issued; send or accept them');

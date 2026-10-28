@@ -3,6 +3,7 @@ import {
   convertQuotationToInvoice,
   issueDocument,
   nextDocumentNumber,
+  releaseConvertedQuotation,
   transitionQuotation,
   validatePayment,
   validateTransaction,
@@ -39,6 +40,24 @@ describe('quotation workflow', () => {
     expect(invoice.lines).toEqual(q.lines);
     expect(invoice.lines).not.toBe(q.lines);
     expect(() => convertQuotationToInvoice(quotation, 'doc_dupe', actor, '2026-05-02')).toThrow(/already been converted/);
+  });
+
+  it('releases the quotation when its draft invoice is deleted, allowing reconversion', () => {
+    const q = transitionQuotation(doc({ type: 'quotation', number: 'QUO/2026-27/0001' }), 'accept', actor);
+    const first = convertQuotationToInvoice(q, 'doc_first', actor, '2026-05-02');
+    const released = releaseConvertedQuotation(first.quotation, first.invoice, actor);
+    expect(released.status).toBe('accepted');
+    expect(released.convertedToId).toBeUndefined();
+    expect(released.number).toBe('QUO/2026-27/0001');
+    expect(convertQuotationToInvoice(released, 'doc_second', actor, '2026-05-03').invoice.convertedFromId).toBe(q.id);
+  });
+
+  it('only releases a quotation for its own draft invoice', () => {
+    const q = transitionQuotation(doc({ type: 'quotation' }), 'accept', actor);
+    const { quotation, invoice } = convertQuotationToInvoice(q, 'doc_inv', actor, '2026-05-02');
+    expect(() => releaseConvertedQuotation(quotation, { ...invoice, id: 'other' }, actor)).toThrow(/different invoice/);
+    expect(() => releaseConvertedQuotation(quotation, { ...invoice, status: 'issued' }, actor)).toThrow(/draft/);
+    expect(() => releaseConvertedQuotation(q, invoice, actor)).toThrow(/converted quotations/);
   });
 
   it('does not convert quotations that were not accepted', () => {

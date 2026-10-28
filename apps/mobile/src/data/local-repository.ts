@@ -1,5 +1,5 @@
-import type { BooksData, BusinessDocument, Transaction } from '@linqora-books/accounting-core';
-import { validateTransaction } from '@linqora-books/accounting-core';
+import type { Actor, BooksData, BusinessDocument, Transaction } from '@linqora-books/accounting-core';
+import { isCurrencyLocked, releaseConvertedQuotation, validateTransaction } from '@linqora-books/accounting-core';
 import { RepositoryError, type BooksRepository } from './repository';
 
 const STORAGE_KEY = 'linqora-books:data:v1';
@@ -56,6 +56,9 @@ export class LocalBooksRepository implements BooksRepository {
 
   async saveBusiness(business: BooksData['business'], seed: Partial<Omit<BooksData, 'business'>> = {}): Promise<void> {
     const existing = this.read();
+    if (existing && existing.business.currency !== business.currency && isCurrencyLocked(existing)) {
+      throw new RepositoryError('The currency cannot be changed once accounts, projects or records exist.');
+    }
     this.write({
       contacts: [],
       accounts: [],
@@ -107,12 +110,16 @@ export class LocalBooksRepository implements BooksRepository {
     });
   }
 
-  async deleteDraftDocument(id: string): Promise<void> {
+  async deleteDraftDocument(id: string, actor: Actor): Promise<void> {
     this.mutate((data) => {
       const doc = data.documents.find((d) => d.id === id);
       if (!doc) return data;
       if (doc.status !== 'draft') throw new RepositoryError('Only drafts can be deleted. Void finalised documents instead.');
-      return { ...data, documents: data.documents.filter((d) => d.id !== id) };
+      // Deleting the draft invoice of a conversion hands the quotation back (same write).
+      const documents = data.documents
+        .filter((d) => d.id !== id)
+        .map((d) => (d.id === doc.convertedFromId && d.convertedToId === doc.id ? releaseConvertedQuotation(d, doc, actor) : d));
+      return { ...data, documents };
     });
   }
 

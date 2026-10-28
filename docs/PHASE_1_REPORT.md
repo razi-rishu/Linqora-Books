@@ -104,6 +104,18 @@ aapt dump badging app-debug.apk         # verify package identity
 - Default Capacitor icon/splash.
 - Fixed during verification: after business setup the app briefly returned to the setup screen (stale cached query) — fixed by refetching inactive queries and waiting for the refetch.
 
+### Pre-Phase 2 audit fixes (28 Oct 2026)
+
+- `pnpm android:debug` failed (`'gradlew.bat' is not recognized` — pnpm's shell does not search the current
+  directory). Script now calls `.\gradlew.bat`; verified end to end (BUILD SUCCESSFUL).
+- Changing the currency in Settings after adding only an account crashed the dashboard (currency mismatch).
+  Currency now locks once any account, project, transaction or document exists (repository + Settings).
+- Deleting the draft invoice created from a quotation left the quotation "converted" and pointing at a missing
+  invoice, so it could never be converted again. The quotation now returns to "accepted" in the same write.
+- Regression tests added for both (shown to fail without the fixes). Totals: 89 unit/component tests + 1 E2E.
+- Still open (non-blocking): income dated before an account's opening date counts as cash in but not in the
+  balance; payment dates are not checked against the invoice issue date; `allowBackup` decision; device testing.
+
 ## 9. Requirements for Supabase integration (Phase 2)
 
 - Your approval to create a **new, dedicated** Supabase project for Linqora Books (region, e.g. Mumbai), billing tier.

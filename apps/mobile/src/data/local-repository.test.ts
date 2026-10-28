@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { dashboardSummary, financialYearOf, type BusinessProfile, type Transaction } from '@linqora-books/accounting-core';
+import {
+  convertQuotationToInvoice,
+  dashboardSummary,
+  financialYearOf,
+  transitionQuotation,
+  type BusinessProfile,
+  type Transaction,
+} from '@linqora-books/accounting-core';
 import { LocalBooksRepository } from './local-repository';
 import { buildSampleData } from './sample-data';
 
@@ -16,6 +23,7 @@ const business: BusinessProfile = {
 };
 const TODAY = '2026-10-28';
 const NOW = '2026-10-28T06:00:00.000Z';
+const actor = { userId: 'user_2', now: '2026-10-28T07:00:00.000Z' };
 
 function userTxn(partial: Partial<Transaction>): Transaction {
   return {
@@ -76,9 +84,57 @@ describe('LocalBooksRepository', () => {
   });
 
   it('only deletes drafts', async () => {
-    await expect(repo.deleteDraftDocument('sample_doc_inv1')).rejects.toThrow(/Only drafts/);
-    await repo.deleteDraftDocument('sample_doc_quo3');
+    await expect(repo.deleteDraftDocument('sample_doc_inv1', actor)).rejects.toThrow(/Only drafts/);
+    await repo.deleteDraftDocument('sample_doc_quo3', actor);
     expect((await repo.load())!.documents.some((d) => d.id === 'sample_doc_quo3')).toBe(false);
+  });
+
+  it('returns a quotation to "accepted" when its converted draft invoice is deleted', async () => {
+    const quote = (await repo.load())!.documents.find((d) => d.id === 'sample_doc_quo2')!;
+    const first = convertQuotationToInvoice(transitionQuotation(quote, 'accept', actor), 'doc_first', actor, TODAY);
+    await repo.saveDocuments([first.quotation, first.invoice]);
+
+    await repo.deleteDraftDocument('doc_first', actor);
+    const after = (await repo.load())!.documents;
+    const released = after.find((d) => d.id === 'sample_doc_quo2')!;
+    expect(after.some((d) => d.id === 'doc_first')).toBe(false);
+    expect(released).toMatchObject({ status: 'accepted', updatedAt: actor.now, updatedBy: actor.userId });
+    expect(released.convertedToId).toBeUndefined();
+
+    // It can be converted again, and the duplicate guard still allows exactly one invoice.
+    const second = convertQuotationToInvoice(released, 'doc_second', actor, TODAY);
+    await repo.saveDocuments([second.quotation, second.invoice]);
+    await expect(repo.saveDocuments([{ ...second.invoice, id: 'doc_third' }])).rejects.toThrow(/already been created/);
+  });
+
+  it('locks the currency once an account exists (no records needed)', async () => {
+    const empty = new LocalBooksRepository(localStorage);
+    await empty.clear();
+    await empty.saveBusiness(business);
+    await empty.saveBusiness({ ...business, currency: 'USD' });
+    expect((await empty.load())!.business.currency).toBe('USD');
+
+    await empty.saveAccount({
+      id: 'acc_usd',
+      organizationId: 'org_1',
+      createdAt: NOW,
+      createdBy: 'u',
+      updatedAt: NOW,
+      updatedBy: 'u',
+      origin: 'user',
+      name: 'Cash',
+      kind: 'cash',
+      currency: 'USD',
+      openingBalance: 0,
+      openingDate: TODAY,
+      archived: false,
+    });
+    await expect(empty.saveBusiness({ ...business, currency: 'INR' })).rejects.toThrow(/currency cannot be changed/);
+    // Other profile changes still save.
+    await empty.saveBusiness({ ...business, currency: 'USD', name: 'Renamed' });
+    const data = (await empty.load())!;
+    expect(data.business).toMatchObject({ currency: 'USD', name: 'Renamed' });
+    expect(() => dashboardSummary(data, financialYearOf(TODAY, 4), TODAY)).not.toThrow();
   });
 
   it('removes sample data, but not when own records depend on it', async () => {

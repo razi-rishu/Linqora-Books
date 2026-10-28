@@ -5,6 +5,7 @@ import {
   dashboardSummary,
   documentBalance,
   documentTotals,
+  isCurrencyLocked,
   monthlyReport,
   paymentStatus,
   profitAndLoss,
@@ -16,6 +17,16 @@ import { account, books, doc, txn } from './test-fixtures';
 import type { Project } from './models';
 
 const FY = financialYearOf('2026-05-01', 4);
+
+describe('isCurrencyLocked', () => {
+  it('is unlocked only while nothing carries an amount', () => {
+    expect(isCurrencyLocked(books())).toBe(false);
+    expect(isCurrencyLocked(books({ contacts: [] }))).toBe(false);
+    expect(isCurrencyLocked(books({ accounts: [account({ id: 'a' })] }))).toBe(true);
+    expect(isCurrencyLocked(books({ transactions: [txn({ kind: 'income', amount: 1 })] }))).toBe(true);
+    expect(isCurrencyLocked(books({ documents: [doc({ type: 'quotation' })] }))).toBe(true);
+  });
+});
 
 describe('documentTotals', () => {
   it('sums lines and per-line tax', () => {

@@ -1,4 +1,5 @@
 import type {
+  Actor,
   BooksData,
   BusinessDocument,
   BusinessProfile,
@@ -25,8 +26,11 @@ export interface BooksRepository {
   saveTransaction(transaction: Transaction): Promise<void>;
   /** Saves several documents atomically (e.g. quotation + new invoice on conversion). */
   saveDocuments(documents: BusinessDocument[]): Promise<void>;
-  /** Only draft documents may be deleted; finalised ones must be voided. */
-  deleteDraftDocument(id: string): Promise<void>;
+  /**
+   * Only draft documents may be deleted; finalised ones must be voided. Deleting the
+   * draft invoice of a quotation conversion returns that quotation to "accepted".
+   */
+  deleteDraftDocument(id: string, actor: Actor): Promise<void>;
   /** Removes all records with origin "sample". */
   removeSampleData(): Promise<void>;
   /** Wipes this device's local data. */

@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   todayInTimeZone,
+  type Actor,
   type BooksData,
   type BusinessDocument,
   type BusinessProfile,
@@ -62,7 +63,7 @@ type Mutation =
   | { type: 'project'; project: Project }
   | { type: 'transaction'; transaction: Transaction }
   | { type: 'documents'; documents: BusinessDocument[] }
-  | { type: 'deleteDraft'; id: string }
+  | { type: 'deleteDraft'; id: string; actor: Actor }
   | { type: 'removeSample' }
   | { type: 'clear' };
 
@@ -86,7 +87,7 @@ export function useBooksMutation() {
         case 'documents':
           return repo.saveDocuments(m.documents);
         case 'deleteDraft':
-          return repo.deleteDraftDocument(m.id);
+          return repo.deleteDraftDocument(m.id, m.actor);
         case 'removeSample':
           return repo.removeSampleData();
         case 'clear':

@@ -51,6 +51,14 @@ export function isFinalizedLedgerDocument(doc: BusinessDocument): boolean {
   return (doc.type === 'invoice' || doc.type === 'bill') && doc.status === 'issued';
 }
 
+/**
+ * The business currency can only change while no record carries an amount in it.
+ * Amounts are never converted, so changing it afterwards would mix currencies.
+ */
+export function isCurrencyLocked(data: Pick<BooksData, 'accounts' | 'projects' | 'transactions' | 'documents'>): boolean {
+  return data.accounts.length + data.projects.length + data.transactions.length + data.documents.length > 0;
+}
+
 function checkCurrency(currency: CurrencyCode, items: { currency: string }[]): void {
   for (const item of items) {
     if (item.currency !== currency) throw new CurrencyMismatchError(currency, item.currency);

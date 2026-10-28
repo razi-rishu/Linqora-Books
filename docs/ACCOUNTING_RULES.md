@@ -16,7 +16,8 @@ These rules are implemented in `packages/accounting-core` and covered by its tes
 - A business has one base currency (INR fully supported; USD, EUR, GBP, AED defined).
 - Every amount carries a currency. Calculations **throw** `CurrencyMismatchError` rather than combine
   currencies. Multi-currency needs explicit exchange-rate handling (future).
-- The business currency is locked in Settings once records exist.
+- The business currency is locked once any account, project, transaction or document exists
+  (`isCurrencyLocked`), enforced by the repository and reflected in Settings.
 
 ## Two views of performance
 
@@ -59,7 +60,9 @@ taken at face value.
 - **Payments:** only against issued invoices/bills; amount must be > 0 and ≤ outstanding balance (no
   overpayments in Phase 1). Status is derived: unpaid / partly paid / paid / overdue.
 - **Void:** issued → void with a required reason, who and when. Not allowed while non-void payments exist.
-- **Delete:** only drafts. Finalised records are voided, never deleted.
+- **Delete:** only drafts. Finalised records are voided, never deleted. Deleting the draft invoice created
+  by a conversion returns its quotation to *accepted* in the same write (`releaseConvertedQuotation`), so it
+  can be converted again.
 
 ## Corrections and audit trail
 
